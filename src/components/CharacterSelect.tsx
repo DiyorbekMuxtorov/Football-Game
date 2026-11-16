@@ -1,14 +1,16 @@
 import React, { useEffect, useRef, useState } from 'react';
-import { ArrowLeft, Lock, Play } from 'lucide-react';
-import { ARENA, CHARACTERS } from '../game/characters';
+import { ArrowLeft, Lock, Play, Zap } from 'lucide-react';
+import { ARENA, CHARACTERS, STADIUM_META } from '../game/characters';
 import { drawStadiumBackground } from '../game/renderer';
-import { CharacterDef, GameSettings, StadiumTheme } from '../game/types';
+import { BallDesign, CharacterDef, GameSettings, MatchMode, StadiumTheme } from '../game/types';
 import { AnimatedCharacterCanvas, CharacterAvatar } from './CharacterAvatar';
 
 interface CharacterSelectProps {
   p1Character: CharacterDef;
   p2Character: CharacterDef;
   settings: GameSettings;
+  matchMode: MatchMode;
+  onChangeMode: (mode: MatchMode) => void;
   onUpdateSettings: (next: GameSettings) => void;
   onSelectP1: (char: CharacterDef) => void;
   onSelectP2: (char: CharacterDef) => void;
@@ -16,10 +18,20 @@ interface CharacterSelectProps {
   onBack: () => void;
 }
 
+const STADIUM_LIST: StadiumTheme[] = ['international', 'night', 'indoor', 'futuristic'];
+const MODE_LABELS: Record<MatchMode, string> = {
+  quick: 'QUICK DUEL',
+  best_of_3: 'BEST OF 3',
+  custom: 'CUSTOM DUEL',
+  training: 'TRAINING ARENA',
+};
+
 export const CharacterSelect: React.FC<CharacterSelectProps> = ({
   p1Character,
   p2Character,
   settings,
+  matchMode,
+  onChangeMode,
   onUpdateSettings,
   onSelectP1,
   onSelectP2,
@@ -73,35 +85,35 @@ export const CharacterSelect: React.FC<CharacterSelectProps> = ({
   };
 
   return (
-    <div className="relative w-full h-full overflow-hidden flex flex-col items-center justify-between py-3 sm:py-4 px-3 sm:px-6">
+    <div className="relative w-full h-full overflow-hidden flex flex-col items-center justify-between py-2.5 sm:py-3.5 px-3 sm:px-6">
       <canvas ref={bgCanvasRef} className="absolute inset-0 w-full h-full object-cover" />
       <div className="absolute inset-0 bg-slate-950/65 backdrop-blur-[2px] pointer-events-none" />
 
       {/* Top Header */}
-      <div className="relative z-10 w-full max-w-6xl flex items-center justify-between gap-4">
+      <div className="relative z-10 w-full max-w-6xl flex flex-wrap items-center justify-between gap-2.5">
         <button
           type="button"
           onClick={onBack}
           aria-label="Back to Main Menu"
-          className="arcade-btn w-11 h-11 sm:w-12 sm:h-12 rounded-xl bg-gradient-to-b from-amber-300 to-orange-500 flex items-center justify-center cursor-pointer shrink-0"
+          className="arcade-btn w-11 h-11 rounded-xl bg-gradient-to-b from-amber-300 to-orange-500 flex items-center justify-center cursor-pointer shrink-0"
         >
           <ArrowLeft className="w-6 h-6 text-[#0b1633] stroke-[3]" />
         </button>
 
-        <div className="ribbon-banner px-6 sm:px-12 py-1.5 sm:py-2 rounded-2xl bg-gradient-to-b from-sky-400 via-blue-600 to-blue-800">
-          <h2 className="font-arcade text-lg sm:text-3xl text-white text-stroke-dark whitespace-nowrap">
-            SELECT YOUR PLAYER
+        <div className="ribbon-banner px-5 sm:px-9 py-1.5 rounded-2xl bg-gradient-to-b from-sky-400 via-blue-600 to-blue-800 flex items-center gap-3">
+          <h2 className="font-arcade text-base sm:text-2xl text-white text-stroke-dark whitespace-nowrap">
+            {MODE_LABELS[matchMode]} · SQUAD & ARENA
           </h2>
         </div>
 
-        {/* Custom Match Duration & Theme Quick Selector */}
-        <div className="hidden md:flex items-center gap-2 bg-slate-950/80 border border-sky-400/30 rounded-xl p-1.5">
+        {/* Arena, Duration & Stamina Selector */}
+        <div className="hidden md:flex items-center gap-1.5 bg-slate-950/85 border border-sky-400/35 rounded-xl p-1.5">
           {([60, 90, 120] as const).map((dur) => (
             <button
               key={dur}
               type="button"
               onClick={() => onUpdateSettings({ ...settings, matchDuration: dur })}
-              className={`px-2.5 py-1 rounded-lg font-arcade text-xs cursor-pointer ${
+              className={`px-2 py-1 rounded-lg font-arcade text-[11px] cursor-pointer ${
                 settings.matchDuration === dur
                   ? 'bg-amber-400 text-[#0b1633]'
                   : 'text-slate-300 hover:text-white'
@@ -111,21 +123,69 @@ export const CharacterSelect: React.FC<CharacterSelectProps> = ({
             </button>
           ))}
           <span className="text-slate-600">|</span>
-          {(['night', 'sunset', 'daylight'] as StadiumTheme[]).map((theme) => (
+          {STADIUM_LIST.map((theme) => (
             <button
               key={theme}
               type="button"
               onClick={() => onUpdateSettings({ ...settings, stadiumTheme: theme })}
+              title={STADIUM_META[theme].label}
               className={`px-2 py-1 rounded-lg font-arcade text-[10px] uppercase cursor-pointer ${
                 settings.stadiumTheme === theme
                   ? 'bg-sky-500 text-white'
                   : 'text-slate-300 hover:text-white'
               }`}
             >
-              {theme}
+              {STADIUM_META[theme].shortLabel}
             </button>
           ))}
+          <span className="text-slate-600">|</span>
+          <button
+            type="button"
+            onClick={() => onUpdateSettings({ ...settings, staminaEnabled: !settings.staminaEnabled })}
+            title="Toggle Stamina & Sprint Burst"
+            className={`px-2 py-1 rounded-lg font-arcade text-[10px] flex items-center gap-1 cursor-pointer ${
+              settings.staminaEnabled
+                ? 'bg-emerald-500 text-white'
+                : 'bg-slate-800 text-slate-400'
+            }`}
+          >
+            <Zap className="w-3 h-3" />
+            {settings.staminaEnabled ? 'STM ON' : 'STM OFF'}
+          </button>
         </div>
+      </div>
+
+      {/* Mode & Ball Quick Bar */}
+      <div className="relative z-10 flex flex-wrap items-center justify-center gap-2 mt-1">
+        {(['quick', 'best_of_3', 'custom', 'training'] as MatchMode[]).map((m) => (
+          <button
+            key={m}
+            type="button"
+            onClick={() => onChangeMode(m)}
+            className={`px-3 py-1 rounded-lg border-2 border-[#0b1633] font-arcade text-[11px] cursor-pointer transition-all ${
+              matchMode === m
+                ? 'bg-gradient-to-b from-amber-300 to-orange-500 text-[#0b1633] shadow'
+                : 'bg-slate-900/80 text-slate-300 hover:text-white'
+            }`}
+          >
+            {MODE_LABELS[m]}
+          </button>
+        ))}
+        <span className="hidden sm:inline text-slate-600">|</span>
+        {(['classic', 'gold', 'neon'] as BallDesign[]).map((b) => (
+          <button
+            key={b}
+            type="button"
+            onClick={() => onUpdateSettings({ ...settings, ballDesign: b })}
+            className={`hidden sm:inline-block px-2.5 py-1 rounded-lg border border-sky-400/30 font-arcade text-[10px] uppercase cursor-pointer ${
+              settings.ballDesign === b
+                ? 'bg-sky-500 text-white'
+                : 'bg-slate-900/75 text-slate-300 hover:text-white'
+            }`}
+          >
+            BALL: {b}
+          </button>
+        ))}
       </div>
 
       {/* Main Selection Layout: 1P Live Preview | 5x2 Roster Grid | 2P Live Preview */}
@@ -133,7 +193,7 @@ export const CharacterSelect: React.FC<CharacterSelectProps> = ({
         {/* 1P Live Preview */}
         <div
           onClick={() => setActiveSlot(1)}
-          className={`hidden lg:flex flex-col items-center p-3 rounded-3xl border-[3px] cursor-pointer transition-all w-[210px] shrink-0 ${
+          className={`hidden lg:flex flex-col items-center p-3 rounded-3xl border-[3px] cursor-pointer transition-all w-[205px] shrink-0 ${
             activeSlot === 1
               ? 'border-yellow-400 bg-slate-900/85 shadow-[0_0_24px_rgba(250,204,21,0.45)]'
               : 'border-sky-400/40 bg-slate-900/65 hover:border-sky-300'
@@ -145,9 +205,9 @@ export const CharacterSelect: React.FC<CharacterSelectProps> = ({
           <AnimatedCharacterCanvas
             character={p1Character}
             facing={1}
-            scale={1.4}
-            width={170}
-            height={210}
+            scale={1.35}
+            width={165}
+            height={195}
           />
           <div className="text-center mt-1">
             <div className="font-arcade text-base text-white truncate max-w-[180px]">
@@ -160,7 +220,7 @@ export const CharacterSelect: React.FC<CharacterSelectProps> = ({
         </div>
 
         {/* 5 x 2 Character Cards Grid */}
-        <div className="flex-1 max-w-3xl grid grid-cols-5 gap-2 sm:gap-3">
+        <div className="flex-1 max-w-3xl grid grid-cols-5 gap-2 sm:gap-2.5">
           {CHARACTERS.map((char) => {
             const isP1 = char.id === p1Character.id;
             const isP2 = char.id === p2Character.id;
@@ -199,7 +259,7 @@ export const CharacterSelect: React.FC<CharacterSelectProps> = ({
                 <div className="relative w-full aspect-square bg-slate-900 flex items-center justify-center overflow-hidden">
                   <CharacterAvatar
                     character={char}
-                    size={130}
+                    size={124}
                     expression={isP1 || isP2 ? 'happy' : 'normal'}
                     className="w-full h-full object-cover"
                   />
@@ -224,7 +284,7 @@ export const CharacterSelect: React.FC<CharacterSelectProps> = ({
         {/* 2P Live Preview */}
         <div
           onClick={() => setActiveSlot(2)}
-          className={`hidden lg:flex flex-col items-center p-3 rounded-3xl border-[3px] cursor-pointer transition-all w-[210px] shrink-0 ${
+          className={`hidden lg:flex flex-col items-center p-3 rounded-3xl border-[3px] cursor-pointer transition-all w-[205px] shrink-0 ${
             activeSlot === 2
               ? 'border-yellow-400 bg-slate-900/85 shadow-[0_0_24px_rgba(239,68,68,0.45)]'
               : 'border-rose-400/40 bg-slate-900/65 hover:border-rose-300'
@@ -236,9 +296,9 @@ export const CharacterSelect: React.FC<CharacterSelectProps> = ({
           <AnimatedCharacterCanvas
             character={p2Character}
             facing={-1}
-            scale={1.4}
-            width={170}
-            height={210}
+            scale={1.35}
+            width={165}
+            height={195}
           />
           <div className="text-center mt-1">
             <div className="font-arcade text-base text-white truncate max-w-[180px]">
@@ -274,7 +334,11 @@ export const CharacterSelect: React.FC<CharacterSelectProps> = ({
         >
           <Play className="w-6 h-6 fill-white text-white shrink-0" />
           <span className="font-arcade text-lg sm:text-2xl text-white text-stroke-dark whitespace-nowrap">
-            KICK OFF ({settings.matchDuration}s)
+            {matchMode === 'training'
+              ? 'ENTER TRAINING'
+              : matchMode === 'best_of_3'
+              ? `START BO3 (${settings.matchDuration}s)`
+              : `KICK OFF (${settings.matchDuration}s)`}
           </span>
         </button>
 

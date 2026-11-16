@@ -5,12 +5,14 @@ import { MainMenu } from './components/MainMenu';
 import { SettingsModal } from './components/SettingsModal';
 import { VictoryScreen } from './components/VictoryScreen';
 import { soundEngine } from './game/audio';
-import { CHARACTERS, DEFAULT_SETTINGS } from './game/characters';
+import { CHARACTERS, DEFAULT_SETTINGS, normalizeStadiumTheme } from './game/characters';
 import {
   CharacterDef,
   GameScreen,
   GameSettings,
+  HeadToHeadRecord,
   MatchHistoryEntry,
+  MatchMode,
   MatchResult,
   PlayerCareerStats,
   RivalrySeries,
@@ -19,6 +21,7 @@ import {
 const SETTINGS_STORAGE_KEY = 'super_head_football_settings_v2';
 const HISTORY_STORAGE_KEY = 'super_head_football_history_v1';
 const CAREER_STORAGE_KEY = 'super_head_football_career_v1';
+const H2H_STORAGE_KEY = 'super_head_football_h2h_v1';
 
 function loadInitialSettings(): GameSettings {
   try {
@@ -37,10 +40,7 @@ function loadInitialSettings(): GameSettings {
             ? Math.max(0, Math.min(1, parsed.sfxVolume))
             : DEFAULT_SETTINGS.sfxVolume,
         graphicsQuality: parsed.graphicsQuality === 'medium' ? 'medium' : 'high',
-        stadiumTheme:
-          parsed.stadiumTheme === 'sunset' || parsed.stadiumTheme === 'daylight'
-            ? parsed.stadiumTheme
-            : 'night',
+        stadiumTheme: normalizeStadiumTheme(parsed.stadiumTheme),
         ballDesign:
           parsed.ballDesign === 'gold' || parsed.ballDesign === 'neon'
             ? parsed.ballDesign
@@ -49,6 +49,10 @@ function loadInitialSettings(): GameSettings {
           parsed.matchDuration === 90 || parsed.matchDuration === 120
             ? parsed.matchDuration
             : DEFAULT_SETTINGS.matchDuration,
+        staminaEnabled:
+          typeof parsed.staminaEnabled === 'boolean'
+            ? parsed.staminaEnabled
+            : DEFAULT_SETTINGS.staminaEnabled,
       };
     }
   } catch {
@@ -85,14 +89,57 @@ function loadCareerStats(): Record<string, PlayerCareerStats> {
   return {};
 }
 
+function loadHeadToHead(fallbackHistory: MatchHistoryEntry[]): HeadToHeadRecord {
+  try {
+    const raw = localStorage.getItem(H2H_STORAGE_KEY);
+    if (raw) {
+      const parsed = JSON.parse(raw) as Partial<HeadToHeadRecord>;
+      return {
+        p1Wins: Number(parsed.p1Wins) || 0,
+        p2Wins: Number(parsed.p2Wins) || 0,
+        totalMatches: Number(parsed.totalMatches) || 0,
+        p1Goals: Number(parsed.p1Goals) || 0,
+        p2Goals: Number(parsed.p2Goals) || 0,
+        overtimeMatches: Number(parsed.overtimeMatches) || 0,
+        bestSingleScore: Number(parsed.bestSingleScore) || 0,
+      };
+    }
+  } catch {
+    // Ignore storage read errors
+  }
+  // Seed cleanly from existing history if migrating
+  return fallbackHistory.reduce<HeadToHeadRecord>(
+    (acc, m) => ({
+      p1Wins: acc.p1Wins + (m.winner === 1 ? 1 : 0),
+      p2Wins: acc.p2Wins + (m.winner === 2 ? 1 : 0),
+      totalMatches: acc.totalMatches + 1,
+      p1Goals: acc.p1Goals + m.p1Score,
+      p2Goals: acc.p2Goals + m.p2Score,
+      overtimeMatches: acc.overtimeMatches + (m.wasOvertime ? 1 : 0),
+      bestSingleScore: Math.max(acc.bestSingleScore, m.p1Score, m.p2Score),
+    }),
+    {
+      p1Wins: 0,
+      p2Wins: 0,
+      totalMatches: 0,
+      p1Goals: 0,
+      p2Goals: 0,
+      overtimeMatches: 0,
+      bestSingleScore: 0,
+    }
+  );
+}
+
 export default function App() {
   const [screen, setScreen] = useState<GameScreen>('menu');
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [settings, setSettings] = useState<GameSettings>(loadInitialSettings);
   const [history, setHistory] = useState<MatchHistoryEntry[]>(loadMatchHistory);
-  const [careerStats, setCareerStats] = useState<Record<string, PlayerCareerStats>>(loadCareerStats);
+  const [, setCareerStats] = useState<Record<string, PlayerCareerStats>>(loadCareerStats);
+  const [headToHead, setHeadToHead] = useState<HeadToHeadRecord>(() => loadHeadToHead(loadMatchHistory()));
   const [isFullscreen, setIsFullscreen] = useState(false);
 
+  const [matchMode, setMatchMode] = useState<MatchMode>('quick');
   const [p1Character, setP1Character] = useState<CharacterDef>(CHARACTERS[0]);
   const [p2Character, setP2Character] = useState<CharacterDef>(CHARACTERS[1]);
 
@@ -102,19 +149,14 @@ export default function App() {
     p1Wins: 0,
     p2Wins: 0,
     matchesPlayed: 0,
+    bestOfThreeActive: false,
   });
 
-  const bestScoreRecord = history.reduce(
-    (best, entry) => Math.max(best, entry.p1Score, entry.p2Score),
+  const bestScoreRecord = Math.max(
+    headToHead.bestSingleScore,
     matchResult ? Math.max(matchResult.p1Score, matchResult.p2Score) : 0
   );
-  const totalCareerGoals = Object.values(careerStats).reduce((sum, s) => sum + s.goals, 0);
-  const historyGoals = history.reduce((sum, e) => sum + e.p1Score + e.p2Score, 0);
-  const totalGoals = Math.max(totalCareerGoals, historyGoals);
-  const totalCareerMatches = Math.floor(
-    Object.values(careerStats).reduce((sum, s) => sum + s.matches, 0) / 2
-  );
-  const matchesPlayed = Math.max(totalCareerMatches, history.length);
+  const totalGoals = headToHead.p1Goals + headToHead.p2Goals;
 
   // Sync fullscreen state listener
   useEffect(() => {
@@ -154,14 +196,55 @@ export default function App() {
     }
   }, [screen, settingsOpen, settings.musicEnabled]);
 
-  const startNewMatch = useCallback(() => {
+  const launchMatch = useCallback((mode: MatchMode, resetBo3: boolean) => {
     soundEngine.unlock();
     soundEngine.playClick();
     setSettingsOpen(false);
     setMatchResult(null);
+    setMatchMode(mode);
+    if (mode === 'best_of_3') {
+      if (resetBo3) {
+        setRivalrySeries({
+          p1Wins: 0,
+          p2Wins: 0,
+          matchesPlayed: 0,
+          bestOfThreeActive: true,
+        });
+      }
+    } else {
+      setRivalrySeries((prev) => ({ ...prev, bestOfThreeActive: false }));
+    }
     setMatchKey((k) => k + 1);
     setScreen('playing');
   }, []);
+
+  const handleStartModeFromMenu = useCallback(
+    (mode: MatchMode) => {
+      if (mode === 'custom') {
+        soundEngine.unlock();
+        soundEngine.playClick();
+        setMatchMode('custom');
+        setSettingsOpen(false);
+        setScreen('select');
+        return;
+      }
+      launchMatch(mode, mode === 'best_of_3');
+    },
+    [launchMatch]
+  );
+
+  const startCurrentModeMatch = useCallback(() => {
+    launchMatch(matchMode, matchMode === 'best_of_3');
+  }, [launchMatch, matchMode]);
+
+  const handleVictoryPlayAgain = useCallback(() => {
+    if (matchMode === 'best_of_3') {
+      const seriesEnded = rivalrySeries.p1Wins >= 2 || rivalrySeries.p2Wins >= 2;
+      launchMatch('best_of_3', seriesEnded);
+    } else {
+      launchMatch(matchMode, false);
+    }
+  }, [launchMatch, matchMode, rivalrySeries.p1Wins, rivalrySeries.p2Wins]);
 
   const handleOpenSelect = useCallback(() => {
     soundEngine.unlock();
@@ -190,6 +273,8 @@ export default function App() {
 
   const handleMatchEnd = useCallback(
     (result: MatchResult) => {
+      if (result.mode === 'training') return;
+
       setMatchResult(result);
       setSettingsOpen(false);
       setScreen('victory');
@@ -203,12 +288,31 @@ export default function App() {
         p2Score: result.p2Score,
         winner: result.winner,
         wasOvertime: result.wasOvertime,
+        mode: result.mode,
       };
 
       setHistory((prev) => {
         const next = [entry, ...prev].slice(0, 15);
         try {
           localStorage.setItem(HISTORY_STORAGE_KEY, JSON.stringify(next));
+        } catch {
+          // Ignore storage write errors
+        }
+        return next;
+      });
+
+      setHeadToHead((prev) => {
+        const next: HeadToHeadRecord = {
+          p1Wins: prev.p1Wins + (result.winner === 1 ? 1 : 0),
+          p2Wins: prev.p2Wins + (result.winner === 2 ? 1 : 0),
+          totalMatches: prev.totalMatches + 1,
+          p1Goals: prev.p1Goals + result.p1Score,
+          p2Goals: prev.p2Goals + result.p2Score,
+          overtimeMatches: prev.overtimeMatches + (result.wasOvertime ? 1 : 0),
+          bestSingleScore: Math.max(prev.bestSingleScore, result.p1Score, result.p2Score),
+        };
+        try {
+          localStorage.setItem(H2H_STORAGE_KEY, JSON.stringify(next));
         } catch {
           // Ignore storage write errors
         }
@@ -238,10 +342,12 @@ export default function App() {
         }
         return next;
       });
+
       setRivalrySeries((prev) => ({
         p1Wins: prev.p1Wins + (result.winner === 1 ? 1 : 0),
         p2Wins: prev.p2Wins + (result.winner === 2 ? 1 : 0),
         matchesPlayed: prev.matchesPlayed + 1,
+        bestOfThreeActive: result.mode === 'best_of_3',
       }));
     },
     [p1Character.id, p1Character.shortName, p2Character.id, p2Character.shortName]
@@ -255,14 +361,11 @@ export default function App() {
           p2Character={p2Character}
           stadiumTheme={settings.stadiumTheme}
           graphicsQuality={settings.graphicsQuality}
-          bestScoreRecord={bestScoreRecord}
-          totalGoals={totalGoals}
-          matchesPlayed={matchesPlayed}
+          headToHead={headToHead}
           recentMatches={history}
           isFullscreen={isFullscreen}
           onToggleFullscreen={handleToggleFullscreen}
-          onPlayQuick={startNewMatch}
-          onTwoPlayers={handleOpenSelect}
+          onStartMode={handleStartModeFromMenu}
           onOpenSettings={handleOpenSettings}
           onOpenSelect={handleOpenSelect}
         />
@@ -273,6 +376,12 @@ export default function App() {
           p1Character={p1Character}
           p2Character={p2Character}
           settings={settings}
+          matchMode={matchMode}
+          onChangeMode={(m) => {
+            soundEngine.unlock();
+            soundEngine.playClick();
+            setMatchMode(m);
+          }}
           onUpdateSettings={(next) => {
             soundEngine.unlock();
             soundEngine.playClick();
@@ -288,7 +397,7 @@ export default function App() {
             soundEngine.playClick();
             setP2Character(char);
           }}
-          onStartMatch={startNewMatch}
+          onStartMatch={startCurrentModeMatch}
           onBack={handleReturnMainMenu}
         />
       )}
@@ -298,6 +407,7 @@ export default function App() {
           p1Character={p1Character}
           p2Character={p2Character}
           settings={settings}
+          matchMode={matchMode}
           rivalrySeries={rivalrySeries}
           paused={settingsOpen}
           matchKey={matchKey}
@@ -316,7 +426,7 @@ export default function App() {
           bestScoreRecord={bestScoreRecord}
           totalGoals={totalGoals}
           rivalrySeries={rivalrySeries}
-          onPlayAgain={startNewMatch}
+          onPlayAgain={handleVictoryPlayAgain}
           onSelectPlayers={handleOpenSelect}
           onMainMenu={handleReturnMainMenu}
         />
@@ -336,7 +446,7 @@ export default function App() {
             soundEngine.playClick();
             setSettingsOpen(false);
           }}
-          onRestartMatch={startNewMatch}
+          onRestartMatch={() => launchMatch(matchMode, false)}
           onMainMenu={handleReturnMainMenu}
         />
       )}

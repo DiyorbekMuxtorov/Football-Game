@@ -38,6 +38,13 @@ function drawRoundedRect(
   ctx.closePath();
 }
 
+export interface StadiumScoreboardInfo {
+  p1Score: number;
+  p2Score: number;
+  clockText: string;
+  label?: string;
+}
+
 export function drawStadiumBackground(
   ctx: CanvasRenderingContext2D,
   time: number,
@@ -46,57 +53,114 @@ export function drawStadiumBackground(
   theme: StadiumTheme = 'night',
   quality: GraphicsQuality = 'high',
   isOvertime = false,
-  tensionLevel = 0
+  tensionLevel = 0,
+  scoreboard?: StadiumScoreboardInfo
 ) {
   const W = ARENA.width;
   const H = ARENA.height;
   const groundY = ARENA.groundY;
 
-  // 1. Sky Gradient (dramatic dusk/spotlight mood during Golden Goal sudden death)
+  // 1. Sky / Dome Backdrop per Stadium Identity
   const skyGrad = ctx.createLinearGradient(0, 0, 0, 340);
   if (isOvertime) {
     skyGrad.addColorStop(0, '#09090b');
     skyGrad.addColorStop(0.5, '#3b0764');
     skyGrad.addColorStop(1, '#7c2d12');
-  } else if (theme === 'sunset') {
-    skyGrad.addColorStop(0, '#1e1b4b');
-    skyGrad.addColorStop(0.45, '#7c2d12');
-    skyGrad.addColorStop(0.85, '#ea580c');
-    skyGrad.addColorStop(1, '#fbbf24');
-  } else if (theme === 'daylight') {
+  } else if (theme === 'international') {
     skyGrad.addColorStop(0, '#0284c7');
-    skyGrad.addColorStop(0.6, '#38bdf8');
+    skyGrad.addColorStop(0.55, '#38bdf8');
     skyGrad.addColorStop(1, '#bae6fd');
+  } else if (theme === 'indoor') {
+    skyGrad.addColorStop(0, '#0f172a');
+    skyGrad.addColorStop(0.55, '#1e293b');
+    skyGrad.addColorStop(1, '#334155');
+  } else if (theme === 'futuristic') {
+    skyGrad.addColorStop(0, '#050816');
+    skyGrad.addColorStop(0.5, '#1e1b4b');
+    skyGrad.addColorStop(0.85, '#0f766e');
+    skyGrad.addColorStop(1, '#06b6d4');
   } else {
-    skyGrad.addColorStop(0, '#071336');
-    skyGrad.addColorStop(0.55, '#12337d');
-    skyGrad.addColorStop(1, '#1d56b8');
+    // night stadium
+    skyGrad.addColorStop(0, '#06102c');
+    skyGrad.addColorStop(0.55, '#112e73');
+    skyGrad.addColorStop(1, '#1d4ed8');
   }
   ctx.fillStyle = skyGrad;
   ctx.fillRect(0, 0, W, 340);
 
-  if (theme === 'daylight' && !isOvertime) {
-    ctx.fillStyle = 'rgba(255, 255, 255, 0.72)';
+  // Theme-specific upper architecture / atmosphere
+  if (theme === 'international' && !isOvertime) {
+    // Sunlit clouds & warm horizon glow
+    const sunGrad = ctx.createRadialGradient(W * 0.78, 56, 8, W * 0.78, 56, 150);
+    sunGrad.addColorStop(0, 'rgba(254, 249, 195, 0.92)');
+    sunGrad.addColorStop(0.4, 'rgba(253, 224, 71, 0.28)');
+    sunGrad.addColorStop(1, 'rgba(253, 224, 71, 0)');
+    ctx.fillStyle = sunGrad;
+    ctx.fillRect(W * 0.55, 0, W * 0.45, 220);
+
+    ctx.fillStyle = 'rgba(255, 255, 255, 0.75)';
     for (let i = 0; i < 4; i++) {
-      const cx = ((i * 360 + time * 12) % (W + 240)) - 120;
-      const cy = 54 + (i % 2) * 32;
+      const cx = ((i * 360 + time * 10) % (W + 240)) - 120;
+      const cy = 50 + (i % 2) * 28;
       ctx.beginPath();
-      ctx.arc(cx, cy, 26, 0, Math.PI * 2);
-      ctx.arc(cx + 24, cy - 8, 30, 0, Math.PI * 2);
-      ctx.arc(cx + 52, cy, 24, 0, Math.PI * 2);
+      ctx.arc(cx, cy, 24, 0, Math.PI * 2);
+      ctx.arc(cx + 22, cy - 8, 28, 0, Math.PI * 2);
+      ctx.arc(cx + 48, cy, 22, 0, Math.PI * 2);
       ctx.fill();
+    }
+  } else if (theme === 'indoor') {
+    // Enclosed architectural dome roof ribs & spotlights
+    ctx.strokeStyle = 'rgba(148, 163, 184, 0.25)';
+    ctx.lineWidth = 4;
+    for (let r = 0; r < 9; r++) {
+      const rx = 80 + r * 140;
+      ctx.beginPath();
+      ctx.moveTo(rx, 0);
+      ctx.quadraticCurveTo(W / 2, 72, W - rx, 145);
+      ctx.stroke();
+    }
+    if (quality === 'high') {
+      for (const sx of [260, 640, 1020]) {
+        const spot = ctx.createLinearGradient(sx, 20, sx, groundY);
+        spot.addColorStop(0, 'rgba(254, 243, 199, 0.16)');
+        spot.addColorStop(1, 'rgba(254, 243, 199, 0)');
+        ctx.fillStyle = spot;
+        ctx.beginPath();
+        ctx.moveTo(sx - 28, 18);
+        ctx.lineTo(sx + 28, 18);
+        ctx.lineTo(sx + 175, groundY);
+        ctx.lineTo(sx - 175, groundY);
+        ctx.closePath();
+        ctx.fill();
+      }
+    }
+  } else if (theme === 'futuristic') {
+    // Cyber aurora beams & glowing geometric canopy grid
+    ctx.strokeStyle = 'rgba(34, 211, 238, 0.22)';
+    ctx.lineWidth = 1.6;
+    for (let x = 0; x <= W; x += 80) {
+      ctx.beginPath();
+      ctx.moveTo(x, 0);
+      ctx.lineTo(W / 2 + (x - W / 2) * 0.72, 145);
+      ctx.stroke();
+    }
+    for (let y = 26; y <= 120; y += 28) {
+      ctx.beginPath();
+      ctx.moveTo(0, y);
+      ctx.lineTo(W, y);
+      ctx.stroke();
     }
   }
 
-  // Stadium floodlight volumetric beams (intensified in sudden death & high tension)
-  if (quality === 'high' && (theme !== 'daylight' || isOvertime)) {
+  // Stadium floodlight volumetric beams (night, futuristic, or overtime)
+  if (quality === 'high' && (theme === 'night' || theme === 'futuristic' || isOvertime)) {
     ctx.save();
     for (const fx of [108, 1172]) {
       const beamAlpha = isOvertime ? 0.34 : 0.22 + tensionLevel * 0.1;
       const beamColor = isOvertime
         ? `rgba(250, 204, 21, ${beamAlpha})`
-        : theme === 'sunset'
-        ? `rgba(254, 240, 138, ${beamAlpha})`
+        : theme === 'futuristic'
+        ? `rgba(34, 211, 238, ${beamAlpha})`
         : `rgba(186, 230, 253, ${beamAlpha})`;
       const beamGrad = ctx.createLinearGradient(fx, 40, fx < 640 ? 520 : 760, groundY);
       beamGrad.addColorStop(0, beamColor);
@@ -114,7 +178,14 @@ export function drawStadiumBackground(
   }
 
   // Stadium roof arch
-  ctx.fillStyle = theme === 'daylight' ? '#1e293b' : '#0c1b44';
+  ctx.fillStyle =
+    theme === 'international'
+      ? '#1e293b'
+      : theme === 'indoor'
+      ? '#0f172a'
+      : theme === 'futuristic'
+      ? '#090d24'
+      : '#0c1b44';
   ctx.beginPath();
   ctx.moveTo(0, 122);
   ctx.quadraticCurveTo(W / 2, 46, W, 122);
@@ -123,10 +194,19 @@ export function drawStadiumBackground(
   ctx.closePath();
   ctx.fill();
 
-  // Floodlight towers
+  if (theme === 'futuristic') {
+    ctx.strokeStyle = 'rgba(34, 211, 238, 0.65)';
+    ctx.lineWidth = 2.5;
+    ctx.beginPath();
+    ctx.moveTo(0, 122);
+    ctx.quadraticCurveTo(W / 2, 46, W, 122);
+    ctx.stroke();
+  }
+
+  // Floodlight towers / Indoor Light Pods
   for (const fx of [92, 1188]) {
-    ctx.fillStyle = '#1e293b';
-    ctx.strokeStyle = OUTLINE;
+    ctx.fillStyle = theme === 'futuristic' ? '#0f172a' : '#1e293b';
+    ctx.strokeStyle = theme === 'futuristic' ? '#22d3ee' : OUTLINE;
     ctx.lineWidth = 2.5;
     drawRoundedRect(ctx, fx - 44, 22, 88, 42, 8);
     ctx.fill();
@@ -134,7 +214,14 @@ export function drawStadiumBackground(
 
     for (let row = 0; row < 2; row++) {
       for (let col = 0; col < 4; col++) {
-        ctx.fillStyle = theme === 'daylight' ? '#cbd5e1' : '#fef9c3';
+        ctx.fillStyle =
+          theme === 'international'
+            ? '#cbd5e1'
+            : theme === 'futuristic'
+            ? '#67e8f9'
+            : theme === 'indoor'
+            ? '#fde68a'
+            : '#fef9c3';
         ctx.beginPath();
         ctx.arc(fx - 27 + col * 18, 34 + row * 16, 5.8, 0, Math.PI * 2);
         ctx.fill();
@@ -144,16 +231,32 @@ export function drawStadiumBackground(
 
   // 2. Stadium Stands & Animated Spectators
   const standGrad = ctx.createLinearGradient(0, 145, 0, 445);
-  standGrad.addColorStop(0, theme === 'daylight' ? '#1e3a5f' : '#0f204b');
-  standGrad.addColorStop(1, theme === 'daylight' ? '#334155' : '#1b3578');
+  if (theme === 'international') {
+    standGrad.addColorStop(0, '#1e3a5f');
+    standGrad.addColorStop(1, '#334155');
+  } else if (theme === 'indoor') {
+    standGrad.addColorStop(0, '#18181b');
+    standGrad.addColorStop(1, '#27272a');
+  } else if (theme === 'futuristic') {
+    standGrad.addColorStop(0, '#0f172a');
+    standGrad.addColorStop(1, '#1e1b4b');
+  } else {
+    standGrad.addColorStop(0, '#0f204b');
+    standGrad.addColorStop(1, '#1b3578');
+  }
   ctx.fillStyle = standGrad;
   ctx.fillRect(0, 145, W, 300);
 
-  ctx.fillStyle = '#091433';
-  ctx.fillRect(0, 255, W, 12);
-  ctx.fillRect(0, 360, W, 12);
+  ctx.fillStyle = theme === 'futuristic' ? '#06b6d4' : '#091433';
+  ctx.globalAlpha = theme === 'futuristic' ? 0.32 : 1;
+  ctx.fillRect(0, 255, W, 10);
+  ctx.fillRect(0, 360, W, 10);
+  ctx.globalAlpha = 1;
 
-  const shirtColors = ['#ef4444', '#38bdf8', '#facc15', '#22c55e', '#f97316', '#f8fafc', '#a855f7'];
+  const shirtColors =
+    theme === 'futuristic'
+      ? ['#22d3ee', '#a855f7', '#f472b6', '#38bdf8', '#facc15', '#e2e8f0']
+      : ['#ef4444', '#38bdf8', '#facc15', '#22c55e', '#f97316', '#f8fafc', '#a855f7'];
   const skinColors = ['#f0bfa0', '#d49d74', '#9d6847', '#f6d2bc', '#7c4c33'];
   const colStep = quality === 'high' ? 26 : 36;
   const colCount = Math.ceil(W / colStep);
@@ -163,6 +266,8 @@ export function drawStadiumBackground(
     for (let col = 0; col < colCount; col++) {
       const seed = row * 73 + col * 31;
       const cx = 14 + col * colStep + (row % 2) * 11;
+      // Leave clean space behind the central electronic stadium scoreboard
+      if (row >= 1 && row <= 3 && cx > W / 2 - 140 && cx < W / 2 + 140) continue;
       const wave =
         Math.sin(time * (3.5 + crowdBounce * 6) + col * 0.35 + seed * 0.1) *
         (1.4 + crowdBounce * 6);
@@ -178,6 +283,44 @@ export function drawStadiumBackground(
       ctx.arc(cx, cy, 5.8, 0, Math.PI * 2);
       ctx.fill();
     }
+  }
+
+  // Animated Electronic Stadium Scoreboard in center upper fascia
+  {
+    const sbW = 248;
+    const sbH = 66;
+    const sbX = W / 2 - sbW / 2;
+    const sbY = 178;
+    ctx.save();
+    ctx.fillStyle = theme === 'futuristic' ? '#090d24' : '#0b132b';
+    ctx.strokeStyle = theme === 'futuristic' ? '#22d3ee' : '#38bdf8';
+    ctx.lineWidth = 3;
+    drawRoundedRect(ctx, sbX, sbY, sbW, sbH, 10);
+    ctx.fill();
+    ctx.stroke();
+
+    ctx.fillStyle = 'rgba(15, 23, 42, 0.9)';
+    drawRoundedRect(ctx, sbX + 6, sbY + 6, sbW - 12, sbH - 12, 6);
+    ctx.fill();
+
+    ctx.font = '900 10px "Trebuchet MS", sans-serif';
+    ctx.textAlign = 'center';
+    ctx.fillStyle = theme === 'futuristic' ? '#67e8f9' : '#93c5fd';
+    ctx.fillText(scoreboard?.label || 'SUPER HEAD ARENA · LIVE 1V1', W / 2, sbY + 18);
+
+    const p1S = scoreboard ? scoreboard.p1Score : 0;
+    const p2S = scoreboard ? scoreboard.p2Score : 0;
+    const clk = scoreboard ? scoreboard.clockText : '1V1';
+    ctx.font = '900 23px "Arial Black", sans-serif';
+    ctx.fillStyle = '#38bdf8';
+    ctx.fillText(String(p1S), W / 2 - 74, sbY + 46);
+    ctx.fillStyle = '#facc15';
+    ctx.font = '900 16px "Arial Black", sans-serif';
+    ctx.fillText(clk, W / 2, sbY + 45);
+    ctx.font = '900 23px "Arial Black", sans-serif';
+    ctx.fillStyle = '#fb7185';
+    ctx.fillText(String(p2S), W / 2 + 74, sbY + 46);
+    ctx.restore();
   }
 
   // Stadium camera flashbulbs during intense moments, goals & sudden death
@@ -198,18 +341,30 @@ export function drawStadiumBackground(
 
   // Stadium LED Advertising Boards
   const boardY = 420;
-  ctx.fillStyle = '#0b132b';
+  ctx.fillStyle = theme === 'futuristic' ? '#020617' : '#0b132b';
   ctx.fillRect(0, boardY, W, 38);
-  const ads = [
-    { text: 'APEX SPORT', bg: '#1d4ed8', fg: '#ffffff' },
-    { text: 'NOVA ENERGY', bg: '#dc2626', fg: '#fef08a' },
-    { text: 'STRIKER PRO', bg: '#059669', fg: '#ffffff' },
-    { text: 'VOLT CLEATS', bg: '#d97706', fg: '#0f172a' },
-    { text: 'KICKOFF TV', bg: '#7c3aed', fg: '#ffffff' },
-    { text: 'AERO BALL', bg: '#0284c7', fg: '#ffffff' },
-    { text: 'APEX SPORT', bg: '#1e293b', fg: '#38bdf8' },
-    { text: 'STRIKER PRO', bg: '#b91c1c', fg: '#ffffff' },
-  ];
+  const ads =
+    theme === 'futuristic'
+      ? [
+          { text: 'HYPER TURF', bg: '#0e7490', fg: '#ecfeff' },
+          { text: 'CYBER CUP 1V1', bg: '#4c1d95', fg: '#f0abfc' },
+          { text: 'NEON CLEATS', bg: '#047857', fg: '#a7f3d0' },
+          { text: 'PULSE ARENA', bg: '#1d4ed8', fg: '#e0f2fe' },
+          { text: 'AERO SPIN', bg: '#be185d', fg: '#fce7f3' },
+          { text: 'VOLT TECH', bg: '#0f766e', fg: '#fef08a' },
+          { text: 'HYPER TURF', bg: '#1e1b4b', fg: '#22d3ee' },
+          { text: 'CYBER CUP 1V1', bg: '#0369a1', fg: '#ffffff' },
+        ]
+      : [
+          { text: 'APEX SPORT', bg: '#1d4ed8', fg: '#ffffff' },
+          { text: 'NOVA ENERGY', bg: '#dc2626', fg: '#fef08a' },
+          { text: 'STRIKER PRO', bg: '#059669', fg: '#ffffff' },
+          { text: 'VOLT CLEATS', bg: '#d97706', fg: '#0f172a' },
+          { text: 'KICKOFF TV', bg: '#7c3aed', fg: '#ffffff' },
+          { text: 'AERO BALL', bg: '#0284c7', fg: '#ffffff' },
+          { text: 'APEX SPORT', bg: '#1e293b', fg: '#38bdf8' },
+          { text: 'STRIKER PRO', bg: '#b91c1c', fg: '#ffffff' },
+        ];
   for (let i = 0; i < ads.length; i++) {
     const ax = i * 160;
     const ad = ads[i];
@@ -225,10 +380,18 @@ export function drawStadiumBackground(
   // 3. Detailed Grass Turf
   const turfTop = 458;
   const turfGrad = ctx.createLinearGradient(0, turfTop, 0, H);
-  if (theme === 'sunset') {
+  if (theme === 'international') {
+    turfGrad.addColorStop(0, '#16a34a');
+    turfGrad.addColorStop(0.45, '#22c55e');
+    turfGrad.addColorStop(1, '#15803d');
+  } else if (theme === 'indoor') {
     turfGrad.addColorStop(0, '#15803d');
     turfGrad.addColorStop(0.5, '#16a34a');
     turfGrad.addColorStop(1, '#14532d');
+  } else if (theme === 'futuristic') {
+    turfGrad.addColorStop(0, '#047857');
+    turfGrad.addColorStop(0.5, '#0d9488');
+    turfGrad.addColorStop(1, '#064e3b');
   } else {
     turfGrad.addColorStop(0, '#16a34a');
     turfGrad.addColorStop(0.45, '#22c55e');
@@ -241,9 +404,14 @@ export function drawStadiumBackground(
   const stripeW = W / stripeCount;
   for (let i = 0; i < stripeCount; i++) {
     if (i % 2 === 0) {
-      ctx.fillStyle = 'rgba(255, 255, 255, 0.065)';
+      ctx.fillStyle = theme === 'futuristic' ? 'rgba(34, 211, 238, 0.06)' : 'rgba(255, 255, 255, 0.065)';
       ctx.fillRect(i * stripeW, turfTop, stripeW, H - turfTop);
     }
+  }
+
+  if (theme === 'futuristic') {
+    ctx.fillStyle = 'rgba(34, 211, 238, 0.48)';
+    ctx.fillRect(0, turfTop, W, 3);
   }
 
   if (quality === 'high') {
@@ -444,7 +612,11 @@ export function drawCharacter(
     turnTimer?: number;
     fallTimer?: number;
     isDefending?: boolean;
+    timedBlockTimer?: number;
     isChargingPower?: boolean;
+    holdTimer?: number;
+    headNodTimer?: number;
+    feintTimer?: number;
     expression?: CharacterExpression;
     celebratePhase?: number;
     frozen?: boolean;
@@ -471,7 +643,11 @@ export function drawCharacter(
     turnTimer = 0,
     fallTimer = 0,
     isDefending = false,
+    timedBlockTimer = 0,
     isChargingPower = false,
+    holdTimer = 0,
+    headNodTimer = 0,
+    feintTimer = 0,
     expression = 'normal',
     celebratePhase = 0,
     frozen = false,
@@ -486,22 +662,23 @@ export function drawCharacter(
   ctx.translate(x, y);
   ctx.scale(scale, scale);
 
-  const speedRatio = Math.min(1, Math.abs(vx) / PLAYER_STATS.moveSpeed);
+  const speedRatio = Math.min(1.12, Math.abs(vx) / PLAYER_STATS.moveSpeed);
   const isMoving = onGround && speedRatio > 0.06 && tackleTimer <= 0;
   const landSquash = landTimer > 0 ? Math.sin((landTimer / 0.14) * Math.PI) * 5.5 : 0;
+  const breathScale = !isMoving && onGround && kickTimer <= 0 ? 1 + Math.sin(time * 2.8) * 0.014 : 1;
 
   let bob = 0;
   if (expression === 'happy') {
     const bounceRate = def.celebrationStyle === 'leap_pump' ? 7 : 5.5;
     bob = Math.abs(Math.sin(celebratePhase * bounceRate)) * -10;
   } else if (tackleTimer > 0) {
-    bob = 16; // low slide pose
+    bob = 16;
   } else if (isDefending) {
-    bob = 6; // braced wide defensive stance
+    bob = 6;
   } else if (isMoving) {
     bob = Math.abs(Math.sin(runPhase * 2)) * -4.2;
   } else if (onGround) {
-    bob = Math.sin(time * 3.2) * 1.3 + landSquash;
+    bob = Math.sin(time * 2.8) * 1.4 + landSquash;
   }
 
   // Special ready / charging aura
@@ -530,31 +707,58 @@ export function drawCharacter(
     ctx.restore();
   }
 
-  // Defensive shield ring feedback
+  // Defensive shield ring feedback (gold-cyan gleam during Timed Block parry window!)
   if (isDefending) {
+    const isParryActive = timedBlockTimer > 0;
     ctx.save();
-    ctx.strokeStyle = 'rgba(56, 189, 248, 0.72)';
-    ctx.lineWidth = 3.5;
+    ctx.strokeStyle = isParryActive ? 'rgba(250, 204, 21, 0.92)' : 'rgba(56, 189, 248, 0.72)';
+    ctx.lineWidth = isParryActive ? 4.5 : 3.5;
     ctx.beginPath();
-    ctx.arc(facing * 8, -54, 44, -Math.PI * 0.42, Math.PI * 0.42, facing < 0);
+    ctx.arc(facing * 8, -54, isParryActive ? 47 : 44, -Math.PI * 0.44, Math.PI * 0.44, facing < 0);
     ctx.stroke();
     ctx.restore();
   }
 
-  // Power Shot windup glint
-  if (isChargingPower) {
+  // Power Shot boot charge arc (highlights golden sweet-spot timing window!)
+  if (isChargingPower || isChargingSpecial) {
+    const chargeMax = isChargingSpecial
+      ? PLAYER_STATS.specialHoldThreshold
+      : PLAYER_STATS.powerAutoFireThreshold;
+    const chargeRatio = Math.min(1, Math.max(0.08, holdTimer / Math.max(0.01, chargeMax)));
+    const inPerfectWindow =
+      holdTimer >= PLAYER_STATS.perfectTimingMin && holdTimer <= PLAYER_STATS.perfectTimingMax;
     ctx.save();
-    ctx.strokeStyle = 'rgba(250, 204, 21, 0.8)';
-    ctx.lineWidth = 2.5;
+    ctx.strokeStyle = 'rgba(15, 23, 42, 0.55)';
+    ctx.lineWidth = 4.5;
     ctx.beginPath();
-    ctx.arc(0, -14, 16 + Math.sin(time * 24) * 3, 0, Math.PI * 2);
+    ctx.arc(0, -14, 19, 0, Math.PI * 2);
+    ctx.stroke();
+
+    ctx.strokeStyle = inPerfectWindow
+      ? '#fde047'
+      : isChargingSpecial
+      ? '#38bdf8'
+      : 'rgba(251, 191, 36, 0.9)';
+    ctx.lineWidth = inPerfectWindow ? 4 : 3;
+    ctx.beginPath();
+    ctx.arc(0, -14, 19, -Math.PI / 2, -Math.PI / 2 + Math.PI * 2 * chargeRatio);
     ctx.stroke();
     ctx.restore();
   }
 
-  // Facing flip + turn squash
-  const turnScale = turnTimer > 0 ? 0.86 : 1;
-  ctx.scale(facing * turnScale, 1);
+  // Facing flip + turn/feint squash + breathing
+  const turnScale = feintTimer > 0 ? 0.84 : turnTimer > 0 ? 0.88 : 1;
+  ctx.scale(facing * turnScale, breathScale);
+
+  const kickProgress =
+    kickTimer > 0 ? Math.max(0, Math.min(1, 1 - kickTimer / Math.max(0.01, kickDuration))) : 0;
+  // Snap immediately into full impact extension on strike frame, then follow through cleanly
+  const kickWave =
+    kickTimer > 0
+      ? kickProgress < 0.32
+        ? 0.85 + (kickProgress / 0.32) * 0.15
+        : Math.max(0, 1 - (kickProgress - 0.32) / 0.68)
+      : 0;
 
   // Body lean based on athletic action state & power windup
   if (fallTimer > 0) {
@@ -562,18 +766,22 @@ export function drawCharacter(
     ctx.rotate(-0.62);
   } else if (tackleTimer > 0) {
     ctx.rotate(-0.52);
+  } else if (actionState === 'kick_emergency') {
+    ctx.rotate(0.28);
   } else if (stunned) {
     ctx.rotate(Math.sin(time * 32) * 0.12);
   } else if (expression === 'sad') {
     ctx.rotate(0.06);
   } else if (isChargingPower || isChargingSpecial) {
-    ctx.rotate(-0.15); // coiled windup lean back before strike
+    ctx.rotate(-0.15);
   } else if (actionState === 'brake') {
     ctx.rotate(-0.12);
   } else if (actionState === 'kick_volley') {
     ctx.rotate(-0.28);
+  } else if (actionState === 'kick_curved') {
+    ctx.rotate(-0.16);
   } else if (kickTimer > 0) {
-    ctx.rotate(-0.1 * Math.sin((kickTimer / kickDuration) * Math.PI));
+    ctx.rotate(-0.1 * kickWave);
   } else if (isMoving) {
     ctx.rotate(0.08 * speedRatio);
   }
@@ -594,12 +802,22 @@ export function drawCharacter(
     backArm = -0.9;
     frontArm = 0.65;
   } else if (kickTimer > 0) {
-    const k = Math.sin((kickTimer / kickDuration) * Math.PI);
-    if (actionState === 'kick_low') {
+    const k = kickWave;
+    if (actionState === 'kick_emergency') {
+      frontThigh = -1.2 * k;
+      frontKnee = 0.1;
+      backThigh = 0.45 * k;
+      backKnee = 0.4;
+    } else if (actionState === 'kick_low') {
       frontThigh = -0.85 * k;
       frontKnee = 0.15;
       backThigh = 0.25 * k;
       backKnee = 0.25;
+    } else if (actionState === 'kick_curved') {
+      frontThigh = -1.42 * k;
+      frontKnee = 0.22 * (1 - k);
+      backThigh = 0.36 * k;
+      backKnee = 0.34;
     } else if (actionState === 'kick_high' || actionState === 'kick_volley') {
       frontThigh = -1.65 * k;
       frontKnee = 0.2 * (1 - k);
@@ -614,7 +832,6 @@ export function drawCharacter(
     backArm = -0.8 * k;
     frontArm = 0.85 * k;
   } else if (isChargingPower || isChargingSpecial) {
-    // Visible coiled kick preparation pose!
     frontThigh = 0.72;
     frontKnee = 0.85;
     backThigh = -0.18;
@@ -808,9 +1025,14 @@ export function drawCharacter(
   // 5. Front Arm
   drawArticulatedArm(ctx, 12, -64 + bob, frontArm, def, false);
 
-  // 6. Clean Anatomical Semi-Realistic Head
+  // 6. Clean Anatomical Semi-Realistic Head (with header strike nod)
+  const headNod = headNodTimer > 0 ? Math.sin((headNodTimer / 0.18) * Math.PI) : 0;
   const headCenterY = -98 + bob + (expression === 'sad' ? 4 : 0);
-  drawSemiRealisticHead(ctx, 0, headCenterY, PLAYER_STATS.headRadius, def, expression, time);
+  ctx.save();
+  ctx.translate(headNod * 5, headCenterY);
+  ctx.rotate(headNod * 0.24);
+  drawSemiRealisticHead(ctx, 0, 0, PLAYER_STATS.headRadius, def, expression, time);
+  ctx.restore();
 
   if (frozen) {
     ctx.save();
@@ -1411,6 +1633,16 @@ export function drawBall(
   ctx.fill();
   ctx.restore();
 
+  if (!ball.activePower && ball.isCurved) {
+    ctx.save();
+    ctx.strokeStyle = 'rgba(52, 211, 153, 0.7)';
+    ctx.lineWidth = 3;
+    ctx.beginPath();
+    ctx.arc(ball.x, ball.y, ball.radius + 5, time * 16, time * 16 + Math.PI * 1.15);
+    ctx.stroke();
+    ctx.restore();
+  }
+
   if (ball.activePower) {
     const pInfo = POWER_INFO[ball.activePower];
     ctx.save();
@@ -1589,7 +1821,11 @@ export function drawParticles(ctx: CanvasRenderingContext2D, particles: Particle
   }
 }
 
-export function drawFloatingBanner(ctx: CanvasRenderingContext2D, banner: FloatingBanner | null) {
+export function drawFloatingBanner(
+  ctx: CanvasRenderingContext2D,
+  banner: FloatingBanner | null,
+  showSkipHint = false
+) {
   if (!banner) return;
   const progress = 1 - banner.timer / banner.maxTimer;
   const pop =
@@ -1622,6 +1858,15 @@ export function drawFloatingBanner(ctx: CanvasRenderingContext2D, banner: Floati
     ctx.strokeText(banner.subtext, 0, 54);
     ctx.fillStyle = '#ffffff';
     ctx.fillText(banner.subtext, 0, 54);
+  }
+
+  if (showSkipHint) {
+    ctx.font = '900 15px "Trebuchet MS", sans-serif';
+    ctx.lineWidth = 4;
+    ctx.strokeStyle = '#0b1633';
+    ctx.strokeText('PRESS SHOOT OR SPACE TO CONTINUE', 0, 88);
+    ctx.fillStyle = '#bae6fd';
+    ctx.fillText('PRESS SHOOT OR SPACE TO CONTINUE', 0, 88);
   }
   ctx.restore();
 }

@@ -12,6 +12,9 @@ class SoundEngine {
   private settings: GameSettings = { ...DEFAULT_SETTINGS };
   private isPlayingMusic = false;
   private crowdExcitement = 0.2;
+  private lastBounceTime = 0;
+  private lastFootstepTime = 0;
+  private lastDribbleTime = 0;
 
   private ensureContext(): AudioContext | null {
     if (typeof window === 'undefined') return null;
@@ -252,9 +255,34 @@ class SoundEngine {
 
   public playFootstep() {
     if (!this.settings.soundEnabled) return;
+    const nowMs = Date.now();
+    if (nowMs - this.lastFootstepTime < 110) return;
+    this.lastFootstepTime = nowMs;
     const ctx = this.ensureContext();
     if (!ctx || !this.sfxGain) return;
-    this.playNoiseBurst(0.032, 0.07, 450, this.sfxGain);
+    this.playNoiseBurst(0.032, 0.065, 450, this.sfxGain);
+  }
+
+  public playDribbleTouch() {
+    if (!this.settings.soundEnabled) return;
+    const nowMs = Date.now();
+    if (nowMs - this.lastDribbleTime < 90) return;
+    this.lastDribbleTime = nowMs;
+    const ctx = this.ensureContext();
+    if (!ctx || !this.sfxGain) return;
+    const now = ctx.currentTime;
+    const osc = ctx.createOscillator();
+    const g = ctx.createGain();
+    osc.type = 'sine';
+    osc.frequency.setValueAtTime(165, now);
+    osc.frequency.exponentialRampToValueAtTime(78, now + 0.045);
+    g.gain.setValueAtTime(0.14, now);
+    g.gain.exponentialRampToValueAtTime(0.001, now + 0.05);
+    osc.connect(g);
+    g.connect(this.sfxGain);
+    osc.start(now);
+    osc.stop(now + 0.055);
+    this.playNoiseBurst(0.02, 0.05, 800, this.sfxGain);
   }
 
   public playJump() {
@@ -293,23 +321,78 @@ class SoundEngine {
     osc.stop(now + 0.08);
   }
 
-  public playKick(strong = false, sweetSpot = false) {
+  public playKick(
+    strong = false,
+    sweetSpot = false,
+    style: 'normal' | 'curved' | 'emergency' | 'perfect' = 'normal'
+  ) {
     if (!this.settings.soundEnabled) return;
     const ctx = this.ensureContext();
     if (!ctx || !this.sfxGain) return;
     const now = ctx.currentTime;
+
     const osc = ctx.createOscillator();
     const g = ctx.createGain();
-    osc.type = sweetSpot ? 'sawtooth' : 'triangle';
-    osc.frequency.setValueAtTime(sweetSpot ? 320 : strong ? 260 : 185, now);
-    osc.frequency.exponentialRampToValueAtTime(42, now + (sweetSpot ? 0.14 : 0.11));
-    g.gain.setValueAtTime(sweetSpot ? 0.68 : strong ? 0.56 : 0.34, now);
-    g.gain.exponentialRampToValueAtTime(0.001, now + (sweetSpot ? 0.16 : 0.13));
+    if (style === 'emergency') {
+      osc.type = 'triangle';
+      osc.frequency.setValueAtTime(140, now);
+      osc.frequency.exponentialRampToValueAtTime(52, now + 0.08);
+      g.gain.setValueAtTime(0.28, now);
+      g.gain.exponentialRampToValueAtTime(0.001, now + 0.09);
+      osc.connect(g);
+      g.connect(this.sfxGain);
+      osc.start(now);
+      osc.stop(now + 0.1);
+      this.playNoiseBurst(0.04, 0.16, 600, this.sfxGain);
+      return;
+    }
+
+    const isPerfect = style === 'perfect' || sweetSpot;
+    osc.type = isPerfect ? 'sawtooth' : 'triangle';
+    osc.frequency.setValueAtTime(isPerfect ? 340 : style === 'curved' ? 245 : strong ? 260 : 185, now);
+    osc.frequency.exponentialRampToValueAtTime(42, now + (isPerfect ? 0.15 : 0.11));
+    g.gain.setValueAtTime(isPerfect ? 0.68 : strong ? 0.56 : 0.34, now);
+    g.gain.exponentialRampToValueAtTime(0.001, now + (isPerfect ? 0.17 : 0.13));
     osc.connect(g);
     g.connect(this.sfxGain);
     osc.start(now);
-    osc.stop(now + 0.17);
-    this.playNoiseBurst(sweetSpot ? 0.065 : 0.05, sweetSpot ? 0.42 : strong ? 0.28 : 0.14, sweetSpot ? 1200 : 900, this.sfxGain);
+    osc.stop(now + 0.18);
+
+    this.playNoiseBurst(
+      isPerfect ? 0.07 : 0.05,
+      isPerfect ? 0.42 : strong ? 0.28 : 0.14,
+      style === 'curved' ? 1450 : isPerfect ? 1200 : 900,
+      this.sfxGain
+    );
+
+    if (style === 'curved') {
+      const swish = ctx.createOscillator();
+      const sg = ctx.createGain();
+      swish.type = 'sine';
+      swish.frequency.setValueAtTime(380, now);
+      swish.frequency.exponentialRampToValueAtTime(980, now + 0.12);
+      sg.gain.setValueAtTime(0.14, now);
+      sg.gain.exponentialRampToValueAtTime(0.001, now + 0.13);
+      swish.connect(sg);
+      sg.connect(this.sfxGain);
+      swish.start(now);
+      swish.stop(now + 0.14);
+    }
+
+    if (style === 'perfect') {
+      [987.77, 1318.5].forEach((freq, idx) => {
+        const ping = ctx.createOscillator();
+        const pg = ctx.createGain();
+        ping.type = 'triangle';
+        ping.frequency.setValueAtTime(freq, now + idx * 0.025);
+        pg.gain.setValueAtTime(0.14, now + idx * 0.025);
+        pg.gain.exponentialRampToValueAtTime(0.001, now + idx * 0.025 + 0.12);
+        ping.connect(pg);
+        pg.connect(this.sfxGain!);
+        ping.start(now + idx * 0.025);
+        ping.stop(now + idx * 0.025 + 0.13);
+      });
+    }
   }
 
   public playHeader() {
@@ -337,7 +420,7 @@ class SoundEngine {
     this.playNoiseBurst(0.16, 0.22, 650, this.sfxGain);
   }
 
-  public playBlock(incredibleSave = false) {
+  public playBlock(incredibleSave = false, timedParry = false) {
     if (!this.settings.soundEnabled) return;
     const ctx = this.ensureContext();
     if (!ctx || !this.sfxGain) return;
@@ -345,15 +428,30 @@ class SoundEngine {
     const osc = ctx.createOscillator();
     const g = ctx.createGain();
     osc.type = 'triangle';
-    osc.frequency.setValueAtTime(incredibleSave ? 175 : 140, now);
+    osc.frequency.setValueAtTime(timedParry ? 235 : incredibleSave ? 175 : 140, now);
     osc.frequency.exponentialRampToValueAtTime(52, now + 0.11);
-    g.gain.setValueAtTime(incredibleSave ? 0.48 : 0.38, now);
+    g.gain.setValueAtTime(incredibleSave || timedParry ? 0.5 : 0.38, now);
     g.gain.exponentialRampToValueAtTime(0.001, now + 0.12);
     osc.connect(g);
     g.connect(this.sfxGain);
     osc.start(now);
     osc.stop(now + 0.13);
-    this.playCrowdReaction(incredibleSave ? 0.78 : 0.45, incredibleSave ? 0.32 : 0.2);
+
+    if (timedParry) {
+      const ring = ctx.createOscillator();
+      const rg = ctx.createGain();
+      ring.type = 'sine';
+      ring.frequency.setValueAtTime(740, now);
+      ring.frequency.exponentialRampToValueAtTime(1120, now + 0.09);
+      rg.gain.setValueAtTime(0.16, now);
+      rg.gain.exponentialRampToValueAtTime(0.001, now + 0.14);
+      ring.connect(rg);
+      rg.connect(this.sfxGain);
+      ring.start(now);
+      ring.stop(now + 0.15);
+    }
+
+    this.playCrowdReaction(incredibleSave ? 0.78 : timedParry ? 0.58 : 0.45, incredibleSave ? 0.32 : 0.2);
   }
 
   public playFinalTick() {
@@ -397,6 +495,9 @@ class SoundEngine {
 
   public playBounce() {
     if (!this.settings.soundEnabled) return;
+    const nowMs = Date.now();
+    if (nowMs - this.lastBounceTime < 65) return;
+    this.lastBounceTime = nowMs;
     const ctx = this.ensureContext();
     if (!ctx || !this.sfxGain) return;
     const now = ctx.currentTime;
@@ -411,6 +512,38 @@ class SoundEngine {
     g.connect(this.sfxGain);
     osc.start(now);
     osc.stop(now + 0.08);
+  }
+
+  public playNetSwish() {
+    if (!this.settings.soundEnabled) return;
+    const ctx = this.ensureContext();
+    if (!ctx || !this.sfxGain) return;
+    const now = ctx.currentTime;
+    const dur = 0.22;
+    const bufferSize = Math.floor(ctx.sampleRate * dur);
+    const buffer = ctx.createBuffer(1, bufferSize, ctx.sampleRate);
+    const data = buffer.getChannelData(0);
+    for (let i = 0; i < bufferSize; i++) {
+      data[i] = Math.random() * 2 - 1;
+    }
+    const noise = ctx.createBufferSource();
+    noise.buffer = buffer;
+
+    const filter = ctx.createBiquadFilter();
+    filter.type = 'bandpass';
+    filter.frequency.setValueAtTime(1450, now);
+    filter.frequency.exponentialRampToValueAtTime(680, now + dur);
+    filter.Q.value = 1.2;
+
+    const g = ctx.createGain();
+    g.gain.setValueAtTime(0.24, now);
+    g.gain.exponentialRampToValueAtTime(0.001, now + dur);
+
+    noise.connect(filter);
+    filter.connect(g);
+    g.connect(this.sfxGain);
+    noise.start(now);
+    noise.stop(now + dur + 0.02);
   }
 
   public playPostClang() {
@@ -601,17 +734,25 @@ class SoundEngine {
     this.playCrowdReaction(1.15, 0.38);
   }
 
-  public playVictoryFanfare() {
+  public playVictoryFanfare(isSeriesChampion = false) {
     if (!this.settings.soundEnabled) return;
     const ctx = this.ensureContext();
     if (!ctx || !this.sfxGain) return;
     const now = ctx.currentTime;
-    const melody = [
-      { f: 523.25, t: 0, d: 0.14 },
-      { f: 659.25, t: 0.14, d: 0.14 },
-      { f: 783.99, t: 0.28, d: 0.14 },
-      { f: 1046.5, t: 0.44, d: 0.55 },
-    ];
+    const melody = isSeriesChampion
+      ? [
+          { f: 523.25, t: 0, d: 0.13 },
+          { f: 659.25, t: 0.12, d: 0.13 },
+          { f: 783.99, t: 0.24, d: 0.13 },
+          { f: 1046.5, t: 0.36, d: 0.22 },
+          { f: 1318.51, t: 0.54, d: 0.65 },
+        ]
+      : [
+          { f: 523.25, t: 0, d: 0.14 },
+          { f: 659.25, t: 0.14, d: 0.14 },
+          { f: 783.99, t: 0.28, d: 0.14 },
+          { f: 1046.5, t: 0.44, d: 0.55 },
+        ];
     melody.forEach((n) => {
       const osc = ctx.createOscillator();
       const g = ctx.createGain();
@@ -624,7 +765,30 @@ class SoundEngine {
       osc.start(now + n.t);
       osc.stop(now + n.t + n.d + 0.02);
     });
-    this.playCrowdReaction(1.25, 0.34);
+    this.playCrowdReaction(isSeriesChampion ? 1.55 : 1.25, isSeriesChampion ? 0.42 : 0.34);
+  }
+
+  public playDefeatSting() {
+    if (!this.settings.soundEnabled) return;
+    const ctx = this.ensureContext();
+    if (!ctx || !this.sfxGain) return;
+    const now = ctx.currentTime;
+    [
+      { f: 329.63, t: 0, d: 0.18 },
+      { f: 293.66, t: 0.16, d: 0.18 },
+      { f: 220.0, t: 0.34, d: 0.42 },
+    ].forEach((n) => {
+      const osc = ctx.createOscillator();
+      const g = ctx.createGain();
+      osc.type = 'sine';
+      osc.frequency.setValueAtTime(n.f, now + n.t);
+      g.gain.setValueAtTime(0.11, now + n.t);
+      g.gain.exponentialRampToValueAtTime(0.001, now + n.t + n.d);
+      osc.connect(g);
+      g.connect(this.sfxGain!);
+      osc.start(now + n.t);
+      osc.stop(now + n.t + n.d + 0.02);
+    });
   }
 }
 

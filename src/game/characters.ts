@@ -1,31 +1,43 @@
-import { CharacterDef, GameSettings, PowerType } from './types';
+import { CharacterDef, GameSettings, PowerType, StadiumTheme } from './types';
 
 // Identical balanced competitive stats for all 10 characters
 export const PLAYER_STATS = {
-  moveSpeed: 410,
+  moveSpeed: 420,
+  sprintMultiplier: 1.12,
+  exhaustedFactor: 0.88,
+  staminaMax: 100,
+  staminaDrainPerSec: 17,
+  staminaRegenIdle: 34,
+  staminaRegenWalk: 16,
+  staminaJumpCost: 5,
+  staminaTackleCost: 12,
   defendMoveFactor: 0.56,
-  acceleration: 2950,
-  groundFriction: 2350,
-  brakeFriction: 3800,
-  airAcceleration: 1850,
-  jumpVelocity: -710,
-  gravity: 1680,
+  acceleration: 3450,
+  groundFriction: 2550,
+  brakeFriction: 4500,
+  airAcceleration: 2050,
+  jumpVelocity: -725,
+  gravity: 1700,
   headRadius: 23, // Semi-realistic athletic head-to-body ratio
   bodyWidth: 42,
   bodyHeight: 54,
   totalHeight: 126,
-  kickRange: 88,
+  kickRange: 90,
   specialKickRange: 128,
   kickPowerX: 700,
-  kickPowerY: -450,
-  kickCooldown: 0.23,
-  powerHoldThreshold: 0.14,
-  specialHoldThreshold: 0.22,
+  kickPowerY: -440,
+  kickCooldown: 0.21,
+  powerHoldThreshold: 0.13,
+  perfectTimingMin: 0.165,
+  perfectTimingMax: 0.23,
+  powerAutoFireThreshold: 0.34,
+  specialHoldThreshold: 0.24,
   specialCooldown: 5.0,
-  tackleSpeed: 590,
+  tackleSpeed: 610,
   tackleDuration: 0.26,
-  tackleCooldown: 1.05,
-  tackleRecoverPenalty: 0.34,
+  tackleCooldown: 0.98,
+  tackleRecoverPenalty: 0.36,
+  timedBlockWindow: 0.22,
 } as const;
 
 export const ARENA = {
@@ -41,6 +53,38 @@ export const ARENA = {
   ceilingY: 36,
 } as const;
 
+export const STADIUM_META: Record<StadiumTheme, { label: string; shortLabel: string; subtitle: string }> = {
+  international: {
+    label: 'International Arena',
+    shortLabel: 'INTL',
+    subtitle: 'Sunlit Open-Air Championship Pitch',
+  },
+  night: {
+    label: 'Night Stadium',
+    shortLabel: 'NIGHT',
+    subtitle: 'Floodlit Under-The-Lights Classic',
+  },
+  indoor: {
+    label: 'Indoor Dome',
+    shortLabel: 'INDOOR',
+    subtitle: 'Atmospheric Architectural Arena',
+  },
+  futuristic: {
+    label: 'Futuristic Arena',
+    shortLabel: 'FUTURE',
+    subtitle: 'Holo-Trim Cyber Sport Stadium',
+  },
+};
+
+export function normalizeStadiumTheme(raw: unknown): StadiumTheme {
+  if (raw === 'international' || raw === 'night' || raw === 'indoor' || raw === 'futuristic') {
+    return raw;
+  }
+  if (raw === 'daylight') return 'international';
+  if (raw === 'sunset') return 'night';
+  return 'night';
+}
+
 export const DEFAULT_SETTINGS: GameSettings = {
   musicEnabled: true,
   soundEnabled: true,
@@ -50,6 +94,7 @@ export const DEFAULT_SETTINGS: GameSettings = {
   stadiumTheme: 'night',
   ballDesign: 'classic',
   matchDuration: 60,
+  staminaEnabled: true,
 };
 
 export const POWER_ORDER: PowerType[] = ['fire', 'ice', 'lightning', 'super'];

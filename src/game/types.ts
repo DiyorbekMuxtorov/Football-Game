@@ -1,5 +1,7 @@
 export type GameScreen = 'menu' | 'select' | 'playing' | 'victory';
 
+export type MatchMode = 'quick' | 'best_of_3' | 'custom' | 'training';
+
 export type PowerType = 'fire' | 'ice' | 'lightning' | 'super';
 
 export type CharacterExpression = 'normal' | 'kick' | 'happy' | 'sad' | 'frozen' | 'shocked' | 'focused';
@@ -16,7 +18,9 @@ export type PlayerActionState =
   | 'kick_power'
   | 'kick_low'
   | 'kick_high'
+  | 'kick_curved'
   | 'kick_volley'
+  | 'kick_emergency'
   | 'defend'
   | 'tackle'
   | 'recover'
@@ -27,10 +31,12 @@ export type ShotType =
   | 'power'
   | 'low'
   | 'high'
+  | 'curved'
   | 'header'
   | 'running'
   | 'jump'
-  | 'volley';
+  | 'volley'
+  | 'emergency';
 
 export type HairStyle =
   | 'messi'
@@ -48,7 +54,7 @@ export type KitPattern = 'stripes' | 'split' | 'solid' | 'trim' | 'sash';
 
 export type CelebrationStyle = 'arms_sky' | 'leap_pump' | 'cross_arms' | 'dance_wave' | 'fist_roar';
 
-export type StadiumTheme = 'night' | 'sunset' | 'daylight';
+export type StadiumTheme = 'international' | 'night' | 'indoor' | 'futuristic';
 
 export type BallDesign = 'classic' | 'gold' | 'neon';
 
@@ -90,22 +96,36 @@ export interface GameSettings {
   stadiumTheme: StadiumTheme;
   ballDesign: BallDesign;
   matchDuration: 60 | 90 | 120;
+  staminaEnabled: boolean;
 }
 
 export interface PlayerMatchStats {
   shots: number;
+  shotsOnTarget: number;
   kicks: number;
   headers: number;
   blocks: number;
   saves: number;
   tackles: number;
   specialsUsed: number;
+  perfectShots: number;
 }
 
 export interface RivalrySeries {
   p1Wins: number;
   p2Wins: number;
   matchesPlayed: number;
+  bestOfThreeActive?: boolean;
+}
+
+export interface HeadToHeadRecord {
+  p1Wins: number;
+  p2Wins: number;
+  totalMatches: number;
+  p1Goals: number;
+  p2Goals: number;
+  overtimeMatches: number;
+  bestSingleScore: number;
 }
 
 export interface MatchResult {
@@ -114,6 +134,7 @@ export interface MatchResult {
   p2Score: number;
   wasOvertime: boolean;
   durationSeconds: number;
+  mode: MatchMode;
   p1Stats: PlayerMatchStats;
   p2Stats: PlayerMatchStats;
 }
@@ -127,6 +148,7 @@ export interface MatchHistoryEntry {
   p2Score: number;
   winner: 1 | 2;
   wasOvertime: boolean;
+  mode?: MatchMode;
 }
 
 export interface PlayerCareerStats {
@@ -144,6 +166,10 @@ export interface PlayerState {
   vy: number;
   facing: 1 | -1;
   turnTimer: number;
+  feintTimer: number;
+  headNodTimer: number;
+  jumpCutDone: boolean;
+  dribbleCooldown: number;
   onGround: boolean;
   runPhase: number;
   lastStrideHalf: number;
@@ -154,10 +180,13 @@ export interface PlayerState {
   kickCooldown: number;
   landTimer: number;
   isDefending: boolean;
+  timedBlockTimer: number;
   tackleTimer: number;
   tackleCooldown: number;
   recoverTimer: number;
   energy: number;
+  stamina: number;
+  isSprinting: boolean;
   specialCooldown: number;
   holdTimer: number;
   isChargingSpecial: boolean;
@@ -186,6 +215,7 @@ export interface BallState {
   squashX: number;
   squashY: number;
   lastTouchPlayer: 1 | 2 | null;
+  isCurved: boolean;
 }
 
 export interface Particle {
@@ -226,11 +256,16 @@ export interface HudSnapshot {
   p2Score: number;
   timeRemaining: number;
   isOvertime: boolean;
+  isTraining: boolean;
+  staminaEnabled: boolean;
   phase: MatchPhase;
+  goalSkipReady: boolean;
   vsTimer: number;
   countdownText: string;
   p1Energy: number;
   p2Energy: number;
+  p1Stamina: number;
+  p2Stamina: number;
   p1SpecialCooldown: number;
   p2SpecialCooldown: number;
   p1Frozen: boolean;

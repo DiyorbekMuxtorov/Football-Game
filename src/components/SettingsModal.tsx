@@ -9,8 +9,9 @@ import {
   RotateCcw,
   Sliders,
   Volume2,
+  Zap,
 } from 'lucide-react';
-import { DEFAULT_SETTINGS } from '../game/characters';
+import { DEFAULT_SETTINGS, STADIUM_META } from '../game/characters';
 import { BallDesign, GameSettings, GraphicsQuality, StadiumTheme } from '../game/types';
 
 interface SettingsModalProps {
@@ -23,6 +24,8 @@ interface SettingsModalProps {
   onRestartMatch: () => void;
   onMainMenu: () => void;
 }
+
+const STADIUM_THEMES: StadiumTheme[] = ['international', 'night', 'indoor', 'futuristic'];
 
 export const SettingsModal: React.FC<SettingsModalProps> = ({
   settings,
@@ -170,6 +173,30 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
                 {Math.round(settings.sfxVolume * 100)}%
               </span>
             </div>
+
+            {/* Stamina & Sprint System Toggle */}
+            <div className="flex items-center justify-between gap-2 pt-1.5 border-t border-slate-800/80">
+              <div className="flex items-center gap-1.5">
+                <Zap className="w-4 h-4 text-emerald-400 shrink-0" />
+                <span className="text-xs font-bold text-sky-200">Stamina & Burst</span>
+              </div>
+              <div className="grid grid-cols-2 gap-1.5">
+                {([true, false] as const).map((val) => (
+                  <button
+                    key={String(val)}
+                    type="button"
+                    onClick={() => onUpdateSettings({ ...settings, staminaEnabled: val })}
+                    className={`py-1 px-2.5 rounded-lg border-2 border-[#0b1633] font-arcade text-[11px] cursor-pointer ${
+                      settings.staminaEnabled === val
+                        ? 'bg-gradient-to-b from-emerald-400 to-green-600 text-white'
+                        : 'bg-slate-800 text-slate-300 hover:text-white'
+                    }`}
+                  >
+                    {val ? 'ON' : 'OFF'}
+                  </button>
+                ))}
+              </div>
+            </div>
           </div>
 
           {/* Match & Visual Options */}
@@ -195,26 +222,20 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
             </div>
 
             <div>
-              <div className="text-xs font-bold text-sky-200 mb-1">Stadium Theme</div>
-              <div className="grid grid-cols-3 gap-1.5">
-                {(
-                  [
-                    { id: 'night', label: 'Night' },
-                    { id: 'sunset', label: 'Sunset' },
-                    { id: 'daylight', label: 'Daylight' },
-                  ] as { id: StadiumTheme; label: string }[]
-                ).map((item) => (
+              <div className="text-xs font-bold text-sky-200 mb-1">Stadium Arena</div>
+              <div className="grid grid-cols-2 gap-1.5">
+                {STADIUM_THEMES.map((theme) => (
                   <button
-                    key={item.id}
+                    key={theme}
                     type="button"
-                    onClick={() => onUpdateSettings({ ...settings, stadiumTheme: item.id })}
-                    className={`py-1 px-2 rounded-lg border-2 border-[#0b1633] font-arcade text-xs cursor-pointer ${
-                      settings.stadiumTheme === item.id
+                    onClick={() => onUpdateSettings({ ...settings, stadiumTheme: theme })}
+                    className={`py-1 px-2 rounded-lg border-2 border-[#0b1633] font-arcade text-[11px] cursor-pointer ${
+                      settings.stadiumTheme === theme
                         ? 'bg-gradient-to-b from-sky-400 to-blue-600 text-white'
                         : 'bg-slate-800 text-slate-300 hover:text-white'
                     }`}
                   >
-                    {item.label}
+                    {STADIUM_META[theme].shortLabel}
                   </button>
                 ))}
               </div>
@@ -249,7 +270,7 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
             <div className="flex items-center justify-between gap-2 pt-0.5">
               <div className="flex items-center gap-1.5">
                 <Sliders className="w-4 h-4 text-sky-300" />
-                <span className="text-xs font-bold text-sky-200">Graphics Quality</span>
+                <span className="text-xs font-bold text-sky-200">Graphics</span>
               </div>
               <div className="grid grid-cols-2 gap-1.5">
                 {(['high', 'medium'] as GraphicsQuality[]).map((q) => (
@@ -284,7 +305,7 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
             </div>
           </div>
           <div className="text-[11px] text-amber-200/90">
-            Tips: Hold Shoot for Power/Special · Defend+Shoot = Low Shot · Jump+Shoot = High Lob · Mid-air Kick = Volley!
+            Tips: Hold Shoot for Power / Perfect Timing · Feint or Turn+Shoot = Curved Spin · Defend+Shoot = Low · Jump+Shoot = Lob · Tap S/↓ = Timed Parry · S/↓+Move = Slide Tackle!
           </div>
         </div>
 

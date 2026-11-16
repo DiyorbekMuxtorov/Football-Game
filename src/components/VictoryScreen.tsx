@@ -1,5 +1,6 @@
 import React, { useEffect, useRef } from 'react';
-import { Home, Play, Shirt, Trophy } from 'lucide-react';
+import { Crown, Home, Play, Shirt, Trophy } from 'lucide-react';
+import { soundEngine } from '../game/audio';
 import { ARENA } from '../game/characters';
 import { drawStadiumBackground } from '../game/renderer';
 import { CharacterDef, GraphicsQuality, MatchResult, RivalrySeries, StadiumTheme } from '../game/types';
@@ -48,6 +49,38 @@ export const VictoryScreen: React.FC<VictoryScreenProps> = ({
   const winnerChar = winner === 1 ? p1Character : p2Character;
   const loserChar = winner === 1 ? p2Character : p1Character;
 
+  const isBo3 = Boolean(rivalrySeries?.bestOfThreeActive);
+  const seriesWinner: 1 | 2 | null =
+    isBo3 && rivalrySeries
+      ? rivalrySeries.p1Wins >= 2
+        ? 1
+        : rivalrySeries.p2Wins >= 2
+        ? 2
+        : null
+      : null;
+  const isSeriesComplete = seriesWinner !== null;
+  const nextBo3Game = rivalrySeries ? rivalrySeries.p1Wins + rivalrySeries.p2Wins + 1 : 1;
+
+  useEffect(() => {
+    if (isSeriesComplete) {
+      soundEngine.playVictoryFanfare(true);
+    }
+  }, [isSeriesComplete]);
+
+  useEffect(() => {
+    const mountedAt = performance.now();
+    const onKeyDown = (e: KeyboardEvent) => {
+      if (e.repeat) return;
+      if (performance.now() - mountedAt < 350) return;
+      if (e.code === 'Enter' || e.code === 'Space' || e.code === 'KeyR') {
+        e.preventDefault();
+        onPlayAgain();
+      }
+    };
+    window.addEventListener('keydown', onKeyDown);
+    return () => window.removeEventListener('keydown', onKeyDown);
+  }, [onPlayAgain]);
+
   useEffect(() => {
     const canvas = canvasRef.current;
     if (!canvas) return;
@@ -89,7 +122,15 @@ export const VictoryScreen: React.FC<VictoryScreenProps> = ({
           rightY: 490,
         },
         stadiumTheme,
-        graphicsQuality
+        graphicsQuality,
+        false,
+        0.7,
+        {
+          p1Score,
+          p2Score,
+          clockText: 'FT',
+          label: isSeriesComplete ? 'SERIES CHAMPION CROWNED' : 'FULL TIME RESULT',
+        }
       );
 
       for (const c of confetti) {
@@ -113,24 +154,30 @@ export const VictoryScreen: React.FC<VictoryScreenProps> = ({
 
     rafId = requestAnimationFrame(loop);
     return () => cancelAnimationFrame(rafId);
-  }, [stadiumTheme, graphicsQuality]);
+  }, [stadiumTheme, graphicsQuality, p1Score, p2Score, isSeriesComplete]);
 
   return (
-    <div className="relative w-full h-full overflow-hidden flex flex-col items-center justify-between py-4 sm:py-6 px-4 sm:px-8">
+    <div className="relative w-full h-full overflow-hidden flex flex-col items-center justify-between py-3 sm:py-5 px-4 sm:px-8">
       <canvas ref={canvasRef} className="absolute inset-0 w-full h-full object-cover" />
-      <div className="absolute inset-0 bg-slate-950/42 pointer-events-none" />
+      <div className="absolute inset-0 bg-slate-950/45 pointer-events-none" />
 
       {/* Top Winner Banner */}
       <div className="relative z-10 flex flex-col items-center">
+        {isSeriesComplete && (
+          <div className="mb-1 px-4 py-0.5 rounded-xl bg-gradient-to-r from-amber-400 via-yellow-300 to-amber-500 border-2 border-[#0b1633] font-arcade text-xs sm:text-sm text-[#0b1633] flex items-center gap-1.5 shadow">
+            <Crown className="w-4 h-4" />
+            BEST OF THREE SERIES CHAMPION!
+          </div>
+        )}
         <div
-          className="font-arcade text-4xl sm:text-6xl font-black tracking-tight text-stroke-heavy text-center"
+          className="font-arcade text-3xl sm:text-5xl font-black tracking-tight text-stroke-heavy text-center"
           style={{
             background: 'linear-gradient(180deg, #fef08a 0%, #facc15 55%, #f59e0b 100%)',
             WebkitBackgroundClip: 'text',
             WebkitTextFillColor: 'transparent',
           }}
         >
-          PLAYER {winner} WINS!
+          {isSeriesComplete ? `PLAYER ${seriesWinner} TAKES THE SERIES!` : `PLAYER ${winner} WINS!`}
         </div>
         {wasOvertime ? (
           <div className="mt-1 px-4 py-0.5 rounded-xl bg-amber-500 border-2 border-[#0b1633] font-arcade text-xs sm:text-sm text-[#0b1633]">
@@ -150,43 +197,48 @@ export const VictoryScreen: React.FC<VictoryScreenProps> = ({
             character={winnerChar}
             facing={1}
             expression="happy"
-            scale={1.85}
-            width={220}
-            height={270}
+            scale={1.8}
+            width={210}
+            height={255}
           />
           <div className="px-4 py-1 rounded-xl bg-gradient-to-b from-amber-400 to-orange-500 border-2 border-[#0b1633] font-arcade text-sm text-[#0b1633] shadow-lg">
             {winnerChar.shortName} · WINNER
           </div>
         </div>
 
-          {/* Score + Stats Card */}
-        <div className="flex flex-col items-center gap-2.5">
-          <div className="px-10 sm:px-14 py-3.5 rounded-3xl bg-slate-950/88 border-[4px] border-sky-300/60 shadow-[0_12px_36px_rgba(0,0,0,0.65)] text-center">
-            <div className="text-xs font-arcade text-sky-300 mb-1">
+        {/* Score + Stats Card */}
+        <div className="flex flex-col items-center gap-2">
+          <div className="px-8 sm:px-12 py-3 rounded-3xl bg-slate-950/88 border-[4px] border-sky-300/60 shadow-[0_12px_36px_rgba(0,0,0,0.65)] text-center">
+            <div className="text-xs font-arcade text-sky-300 mb-0.5">
               {p1Character.shortName} vs {p2Character.shortName}
             </div>
-            <div className="font-arcade text-5xl sm:text-7xl text-white text-stroke-dark tabular-nums whitespace-nowrap">
+            <div className="font-arcade text-5xl sm:text-6xl text-white text-stroke-dark tabular-nums whitespace-nowrap">
               {p1Score} - {p2Score}
             </div>
             {rivalrySeries && rivalrySeries.matchesPlayed > 0 && (
-              <div className="mt-1.5 inline-block px-3 py-0.5 rounded-lg bg-slate-900 border border-amber-400/40 font-arcade text-[11px] text-amber-300">
-                SERIES: 1P {rivalrySeries.p1Wins} - {rivalrySeries.p2Wins} 2P
+              <div className="mt-1 inline-block px-3 py-0.5 rounded-lg bg-slate-900 border border-amber-400/40 font-arcade text-[11px] text-amber-300">
+                {isBo3 ? 'BO3 SERIES' : 'SESSION SERIES'}: 1P {rivalrySeries.p1Wins} - {rivalrySeries.p2Wins} 2P
               </div>
             )}
           </div>
 
           {/* Match Statistics Breakdown */}
-          <div className="w-full min-w-[270px] sm:min-w-[330px] rounded-2xl bg-slate-950/85 border-2 border-sky-400/35 px-4 py-3 text-xs sm:text-sm shadow-xl">
-            <div className="flex items-center justify-between font-arcade text-slate-400 text-[11px] pb-1.5 border-b border-slate-800">
+          <div className="w-full min-w-[285px] sm:min-w-[345px] rounded-2xl bg-slate-950/85 border-2 border-sky-400/35 px-4 py-2.5 text-xs sm:text-sm shadow-xl">
+            <div className="flex items-center justify-between font-arcade text-slate-400 text-[11px] pb-1 border-b border-slate-800">
               <span className="text-sky-300">1P</span>
               <span>MATCH STATS</span>
               <span className="text-rose-400">2P</span>
             </div>
-            <div className="space-y-1 pt-2 tabular-nums">
+            <div className="space-y-1 pt-1.5 tabular-nums text-xs">
               <div className="flex items-center justify-between">
                 <span className="font-arcade text-white w-10">{p1Stats.shots}</span>
                 <span className="text-slate-300 font-medium">Shots</span>
                 <span className="font-arcade text-white w-10 text-right">{p2Stats.shots}</span>
+              </div>
+              <div className="flex items-center justify-between">
+                <span className="font-arcade text-emerald-300 w-10">{p1Stats.shotsOnTarget}</span>
+                <span className="text-emerald-200 font-medium">Shots on Target</span>
+                <span className="font-arcade text-emerald-300 w-10 text-right">{p2Stats.shotsOnTarget}</span>
               </div>
               <div className="flex items-center justify-between">
                 <span className="font-arcade text-white w-10">{p1Stats.headers}</span>
@@ -194,9 +246,9 @@ export const VictoryScreen: React.FC<VictoryScreenProps> = ({
                 <span className="font-arcade text-white w-10 text-right">{p2Stats.headers}</span>
               </div>
               <div className="flex items-center justify-between">
-                <span className="font-arcade text-white w-10">{p1Stats.saves}</span>
+                <span className="font-arcade text-sky-300 w-10">{p1Stats.saves}</span>
                 <span className="text-sky-300 font-medium">Saves</span>
-                <span className="font-arcade text-white w-10 text-right">{p2Stats.saves}</span>
+                <span className="font-arcade text-sky-300 w-10 text-right">{p2Stats.saves}</span>
               </div>
               <div className="flex items-center justify-between">
                 <span className="font-arcade text-white w-10">{p1Stats.blocks}</span>
@@ -209,12 +261,12 @@ export const VictoryScreen: React.FC<VictoryScreenProps> = ({
                 <span className="font-arcade text-white w-10 text-right">{p2Stats.tackles}</span>
               </div>
               <div className="flex items-center justify-between">
-                <span className="font-arcade text-white w-10">{p1Stats.specialsUsed}</span>
-                <span className="text-slate-300 font-medium">Special Shots</span>
-                <span className="font-arcade text-white w-10 text-right">{p2Stats.specialsUsed}</span>
+                <span className="font-arcade text-amber-300 w-10">{p1Stats.specialsUsed}</span>
+                <span className="text-amber-200 font-medium">Specials / Perfect</span>
+                <span className="font-arcade text-amber-300 w-10 text-right">{p2Stats.specialsUsed}</span>
               </div>
             </div>
-            <div className="mt-2.5 pt-2 border-t border-slate-800 flex items-center justify-center gap-3 text-xs text-amber-300">
+            <div className="mt-2 pt-1.5 border-t border-slate-800 flex items-center justify-center gap-3 text-[11px] text-amber-300">
               <span className="flex items-center gap-1">
                 <Trophy className="w-3.5 h-3.5" />
                 Best: {bestScoreRecord}
@@ -234,9 +286,9 @@ export const VictoryScreen: React.FC<VictoryScreenProps> = ({
             character={loserChar}
             facing={-1}
             expression="sad"
-            scale={1.75}
-            width={220}
-            height={270}
+            scale={1.7}
+            width={210}
+            height={255}
           />
           <div className="px-4 py-1 rounded-xl bg-slate-800/90 border-2 border-[#0b1633] font-arcade text-sm text-slate-300 shadow-lg">
             {loserChar.shortName}
@@ -249,11 +301,18 @@ export const VictoryScreen: React.FC<VictoryScreenProps> = ({
         <button
           type="button"
           onClick={onPlayAgain}
-          className="arcade-btn px-7 py-3 rounded-2xl bg-gradient-to-b from-lime-400 via-green-500 to-green-600 flex items-center gap-2.5 cursor-pointer"
+          className="arcade-btn px-7 py-2.5 rounded-2xl bg-gradient-to-b from-lime-400 via-green-500 to-green-600 flex items-center gap-2.5 cursor-pointer"
         >
           <Play className="w-6 h-6 fill-white text-white shrink-0" />
           <span className="font-arcade text-lg sm:text-2xl text-white text-stroke-dark whitespace-nowrap">
-            Rematch
+            {isBo3 && !isSeriesComplete
+              ? `Next Match (Game ${nextBo3Game}/3)`
+              : isBo3 && isSeriesComplete
+              ? 'Rematch Series'
+              : 'Rematch'}
+          </span>
+          <span className="hidden sm:inline-block px-1.5 py-0.5 rounded bg-black/30 border border-white/25 font-arcade text-[10px] text-lime-100">
+            ENTER / SPACE
           </span>
         </button>
 
@@ -261,7 +320,7 @@ export const VictoryScreen: React.FC<VictoryScreenProps> = ({
           <button
             type="button"
             onClick={onSelectPlayers}
-            className="arcade-btn px-6 py-3 rounded-2xl bg-gradient-to-b from-amber-300 via-orange-500 to-orange-600 flex items-center gap-2.5 cursor-pointer"
+            className="arcade-btn px-6 py-2.5 rounded-2xl bg-gradient-to-b from-amber-300 via-orange-500 to-orange-600 flex items-center gap-2.5 cursor-pointer"
           >
             <Shirt className="w-5 h-5 text-white shrink-0" />
             <span className="font-arcade text-lg sm:text-xl text-white text-stroke-dark whitespace-nowrap">
@@ -273,7 +332,7 @@ export const VictoryScreen: React.FC<VictoryScreenProps> = ({
         <button
           type="button"
           onClick={onMainMenu}
-          className="arcade-btn px-7 py-3 rounded-2xl bg-gradient-to-b from-sky-400 via-blue-500 to-blue-700 flex items-center gap-2.5 cursor-pointer"
+          className="arcade-btn px-7 py-2.5 rounded-2xl bg-gradient-to-b from-sky-400 via-blue-500 to-blue-700 flex items-center gap-2.5 cursor-pointer"
         >
           <Home className="w-5 h-5 text-white shrink-0" />
           <span className="font-arcade text-lg sm:text-xl text-white text-stroke-dark whitespace-nowrap">

@@ -1,11 +1,13 @@
 import React, { useEffect, useRef, useState } from 'react';
-import { ArrowDown, ArrowLeft, ArrowRight, ArrowUp, Pause, Shield } from 'lucide-react';
-import { ARENA, POWER_INFO } from '../game/characters';
+import { ArrowDown, ArrowLeft, ArrowRight, ArrowUp, Pause, RotateCcw, Shield } from 'lucide-react';
+import { ARENA, POWER_INFO, STADIUM_META } from '../game/characters';
 import { soundEngine } from '../game/audio';
 import {
   createMatchState,
   InputState,
   MatchEngineState,
+  resetTrainingBall,
+  skipGoalCelebration,
   stepMatchPhysics,
 } from '../game/physics';
 import {
@@ -18,7 +20,14 @@ import {
   drawPlayerShadows,
   drawStadiumBackground,
 } from '../game/renderer';
-import { CharacterDef, GameSettings, HudSnapshot, MatchResult, RivalrySeries } from '../game/types';
+import {
+  CharacterDef,
+  GameSettings,
+  HudSnapshot,
+  MatchMode,
+  MatchResult,
+  RivalrySeries,
+} from '../game/types';
 import { CharacterAvatar } from './CharacterAvatar';
 import { PowerIcon } from './PowerIcon';
 
@@ -26,6 +35,7 @@ interface GameArenaProps {
   p1Character: CharacterDef;
   p2Character: CharacterDef;
   settings: GameSettings;
+  matchMode: MatchMode;
   rivalrySeries?: RivalrySeries;
   paused: boolean;
   matchKey: number;
@@ -45,19 +55,25 @@ export const GameArena: React.FC<GameArenaProps> = ({
   p1Character,
   p2Character,
   settings,
+  matchMode,
   rivalrySeries,
   paused,
   matchKey,
   onPauseToggle,
   onMatchEnd,
 }) => {
+  const isTraining = matchMode === 'training';
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
   const stateRef = useRef<MatchEngineState>(
-    createMatchState(p1Character, p2Character, settings.matchDuration)
+    createMatchState(p1Character, p2Character, settings.matchDuration, false, {
+      staminaEnabled: settings.staminaEnabled,
+      isTraining,
+    })
   );
   const keysRef = useRef<Set<string>>(new Set());
   const pausedRef = useRef(paused);
   const settingsRef = useRef(settings);
+  const matchModeRef = useRef(matchMode);
   const endedFiredRef = useRef(false);
 
   const [hud, setHud] = useState<HudSnapshot>(() => ({
@@ -65,11 +81,16 @@ export const GameArena: React.FC<GameArenaProps> = ({
     p2Score: 0,
     timeRemaining: settings.matchDuration,
     isOvertime: false,
-    phase: 'vs_intro',
-    vsTimer: 1.5,
+    isTraining,
+    staminaEnabled: settings.staminaEnabled,
+    phase: isTraining ? 'playing' : 'vs_intro',
+    goalSkipReady: false,
+    vsTimer: isTraining ? 0 : 1.5,
     countdownText: '',
     p1Energy: 35,
     p2Energy: 35,
+    p1Stamina: 100,
+    p2Stamina: 100,
     p1SpecialCooldown: 0,
     p2SpecialCooldown: 0,
     p1Frozen: false,
@@ -103,10 +124,25 @@ export const GameArena: React.FC<GameArenaProps> = ({
 
   useEffect(() => {
     settingsRef.current = settings;
+    stateRef.current.staminaEnabled = settings.staminaEnabled;
   }, [settings]);
 
   useEffect(() => {
-    stateRef.current = createMatchState(p1Character, p2Character, settingsRef.current.matchDuration);
+    matchModeRef.current = matchMode;
+  }, [matchMode]);
+
+  useEffect(() => {
+    const trainingMode = matchMode === 'training';
+    stateRef.current = createMatchState(
+      p1Character,
+      p2Character,
+      settingsRef.current.matchDuration,
+      false,
+      {
+        staminaEnabled: settingsRef.current.staminaEnabled,
+        isTraining: trainingMode,
+      }
+    );
     endedFiredRef.current = false;
     keysRef.current.clear();
     if (settingsRef.current.soundEnabled) {
@@ -115,7 +151,7 @@ export const GameArena: React.FC<GameArenaProps> = ({
     return () => {
       soundEngine.stopCrowdAmbience();
     };
-  }, [p1Character, p2Character, matchKey]);
+  }, [p1Character, p2Character, matchKey, matchMode]);
 
   useEffect(() => {
     const blockedKeys = new Set(['ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight', 'Space']);
@@ -128,6 +164,16 @@ export const GameArena: React.FC<GameArenaProps> = ({
         e.preventDefault();
         onPauseToggle();
         return;
+      }
+      if (e.code === 'Space' && !e.repeat && !pausedRef.current) {
+        if (stateRef.current.phase === 'goal' && stateRef.current.goalSkipReady) {
+          skipGoalCelebration(stateRef.current);
+          return;
+        }
+        if (stateRef.current.isTraining) {
+          resetTrainingBall(stateRef.current);
+          return;
+        }
       }
       soundEngine.unlock();
       keysRef.current.add(e.code);
@@ -200,6 +246,7 @@ export const GameArena: React.FC<GameArenaProps> = ({
           p2Score: engine.players[1].score,
           wasOvertime: engine.isOvertime,
           durationSeconds: engine.matchDuration,
+          mode: matchModeRef.current,
           p1Stats: { ...engine.players[0].stats },
           p2Stats: { ...engine.players[1].stats },
         });
@@ -210,9 +257,14 @@ export const GameArena: React.FC<GameArenaProps> = ({
 
       const zoom = engine.cameraZoom;
       if (zoom !== 1) {
+        const halfVisibleW = ARENA.width / (2 * zoom);
+        const clampedFocusX = Math.max(
+          halfVisibleW,
+          Math.min(ARENA.width - halfVisibleW, engine.cameraFocusX)
+        );
         ctx.translate(ARENA.width / 2, ARENA.height / 2);
         ctx.scale(zoom, zoom);
-        ctx.translate(-engine.cameraFocusX, -ARENA.height / 2);
+        ctx.translate(-clampedFocusX, -ARENA.height / 2);
       }
 
       if (engine.screenShake > 0.2) {
@@ -220,6 +272,12 @@ export const GameArena: React.FC<GameArenaProps> = ({
         const sy = (Math.random() - 0.5) * engine.screenShake;
         ctx.translate(sx, sy);
       }
+
+      const sbClock = engine.isTraining
+        ? 'TRAIN'
+        : engine.isOvertime
+        ? 'OT'
+        : `${Math.ceil(engine.timeRemaining)}s`;
 
       drawStadiumBackground(
         ctx,
@@ -229,7 +287,13 @@ export const GameArena: React.FC<GameArenaProps> = ({
         curSettings.stadiumTheme,
         curSettings.graphicsQuality,
         engine.isOvertime,
-        engine.tensionLevel
+        engine.tensionLevel,
+        {
+          p1Score: engine.players[0].score,
+          p2Score: engine.players[1].score,
+          clockText: sbClock,
+          label: STADIUM_META[curSettings.stadiumTheme].label.toUpperCase(),
+        }
       );
       drawPlayerShadows(ctx, engine.players);
 
@@ -250,7 +314,11 @@ export const GameArena: React.FC<GameArenaProps> = ({
           turnTimer: p.turnTimer,
           fallTimer: p.fallTimer,
           isDefending: p.isDefending,
+          timedBlockTimer: p.timedBlockTimer,
           isChargingPower: p.isChargingPower,
+          holdTimer: p.holdTimer,
+          headNodTimer: p.headNodTimer,
+          feintTimer: p.feintTimer,
           expression: p.expression,
           celebratePhase: engine.time,
           frozen: p.frozenTimer > 0,
@@ -266,7 +334,7 @@ export const GameArena: React.FC<GameArenaProps> = ({
       drawBall(ctx, engine.ball, engine.time, curSettings.ballDesign);
       drawGoalPostsForeground(ctx);
       drawParticles(ctx, engine.particles);
-      drawFloatingBanner(ctx, engine.banner);
+      drawFloatingBanner(ctx, engine.banner, engine.goalSkipReady);
 
       ctx.restore();
 
@@ -279,11 +347,16 @@ export const GameArena: React.FC<GameArenaProps> = ({
           p2Score: p2.score,
           timeRemaining: engine.timeRemaining,
           isOvertime: engine.isOvertime,
+          isTraining: engine.isTraining,
+          staminaEnabled: engine.staminaEnabled,
           phase: engine.phase,
+          goalSkipReady: engine.goalSkipReady,
           vsTimer: engine.vsTimer,
           countdownText: engine.banner?.text || '',
           p1Energy: p1.energy,
           p2Energy: p2.energy,
+          p1Stamina: p1.stamina,
+          p2Stamina: p2.stamina,
           p1SpecialCooldown: p1.specialCooldown,
           p2SpecialCooldown: p2.specialCooldown,
           p1Frozen: p1.frozenTimer > 0,
@@ -306,7 +379,10 @@ export const GameArena: React.FC<GameArenaProps> = ({
   const p1Ready = hud.p1Energy >= 100 && hud.p1SpecialCooldown <= 0;
   const p2Ready = hud.p2Energy >= 100 && hud.p2SpecialCooldown <= 0;
   const nextPowerInfo = POWER_INFO[hud.nextPower];
-  const isFinalTen = !hud.isOvertime && hud.timeRemaining <= 10 && hud.timeRemaining > 0;
+  const isFinalTen = !hud.isTraining && !hud.isOvertime && hud.timeRemaining <= 10 && hud.timeRemaining > 0;
+  const bo3GameNumber = rivalrySeries?.bestOfThreeActive
+    ? rivalrySeries.p1Wins + rivalrySeries.p2Wins + 1
+    : 0;
 
   return (
     <div className="relative w-full h-full bg-slate-950 flex items-center justify-center overflow-hidden">
@@ -355,10 +431,17 @@ export const GameArena: React.FC<GameArenaProps> = ({
                   </span>
                 </div>
               </div>
-              {rivalrySeries && rivalrySeries.matchesPlayed > 0 && (
-                <div className="px-4 py-1 rounded-xl bg-slate-900 border border-amber-400/45 font-arcade text-xs sm:text-sm text-amber-300">
-                  RIVALRY SERIES: 1P {rivalrySeries.p1Wins} - {rivalrySeries.p2Wins} 2P
+              {rivalrySeries?.bestOfThreeActive ? (
+                <div className="px-4 py-1 rounded-xl bg-slate-900 border border-amber-400/55 font-arcade text-xs sm:text-sm text-amber-300">
+                  BEST OF 3 · GAME {bo3GameNumber} · 1P {rivalrySeries.p1Wins} - {rivalrySeries.p2Wins} 2P
                 </div>
+              ) : (
+                rivalrySeries &&
+                rivalrySeries.matchesPlayed > 0 && (
+                  <div className="px-4 py-1 rounded-xl bg-slate-900 border border-amber-400/45 font-arcade text-xs sm:text-sm text-amber-300">
+                    RIVALRY SERIES: 1P {rivalrySeries.p1Wins} - {rivalrySeries.p2Wins} 2P
+                  </div>
+                )
               )}
             </div>
           </div>
@@ -366,7 +449,7 @@ export const GameArena: React.FC<GameArenaProps> = ({
 
         {/* Top Scoreboard HUD */}
         <div className="absolute top-0 left-0 right-0 px-3 sm:px-5 pt-2.5 flex items-start justify-between pointer-events-none">
-          {/* Left: 1P Avatar + Name + Score + Energy */}
+          {/* Left: 1P Avatar + Name + Score + Energy + Stamina */}
           <div className="flex items-center gap-2 sm:gap-3">
             <div className="relative w-14 h-14 sm:w-16 sm:h-16 rounded-2xl overflow-hidden border-[3px] border-sky-300 bg-slate-900 shadow-lg shrink-0">
               <CharacterAvatar
@@ -409,14 +492,29 @@ export const GameArena: React.FC<GameArenaProps> = ({
                     : 'ENERGY'}
                 </span>
               </div>
+
+              {hud.staminaEnabled && (
+                <div className="w-36 sm:w-44 h-2 rounded-full bg-slate-950/85 border border-[#0b1633] overflow-hidden">
+                  <div
+                    className={`h-full transition-all duration-75 ${
+                      hud.p1Stamina < 20
+                        ? 'bg-amber-500'
+                        : 'bg-gradient-to-r from-emerald-400 to-lime-400'
+                    }`}
+                    style={{ width: `${Math.min(100, Math.round(hud.p1Stamina))}%` }}
+                  />
+                </div>
+              )}
             </div>
           </div>
 
-          {/* Center: Clock + Next Power */}
+          {/* Center: Clock + Next Power + Mode/Training controls */}
           <div className="flex flex-col items-center">
             <div
               className={`px-5 sm:px-7 py-1.5 rounded-2xl border-[3px] border-[#0b1633] shadow-xl ${
-                hud.isOvertime
+                hud.isTraining
+                  ? 'bg-gradient-to-b from-emerald-600 to-teal-900'
+                  : hud.isOvertime
                   ? 'bg-gradient-to-b from-amber-500 to-red-700 animate-pulse'
                   : isFinalTen
                   ? 'bg-gradient-to-b from-red-700 to-slate-950'
@@ -424,7 +522,11 @@ export const GameArena: React.FC<GameArenaProps> = ({
               }`}
             >
               <span className="font-arcade text-2xl sm:text-4xl text-white text-stroke-dark tabular-nums">
-                {hud.isOvertime ? 'OVERTIME' : formatClock(hud.timeRemaining, false)}
+                {hud.isTraining
+                  ? 'TRAINING'
+                  : hud.isOvertime
+                  ? 'OVERTIME'
+                  : formatClock(hud.timeRemaining, false)}
               </span>
             </div>
 
@@ -440,6 +542,23 @@ export const GameArena: React.FC<GameArenaProps> = ({
                 {nextPowerInfo.shortLabel}
               </span>
             </div>
+
+            {rivalrySeries?.bestOfThreeActive && !hud.isTraining && (
+              <div className="mt-1 px-2.5 py-0.5 rounded-lg bg-slate-950/85 border border-amber-400/40 font-arcade text-[10px] text-amber-300">
+                BO3 GAME {bo3GameNumber} · 1P {rivalrySeries.p1Wins} - {rivalrySeries.p2Wins} 2P
+              </div>
+            )}
+
+            {hud.isTraining && (
+              <button
+                type="button"
+                onClick={() => resetTrainingBall(stateRef.current)}
+                className="pointer-events-auto mt-1 px-3 py-0.5 rounded-lg bg-sky-600 hover:bg-sky-500 border-2 border-[#0b1633] font-arcade text-[10px] text-white flex items-center gap-1 cursor-pointer shadow"
+              >
+                <RotateCcw className="w-3 h-3" />
+                RESET BALL (SPACE)
+              </button>
+            )}
           </div>
 
           {/* Right: 2P Score + Name + Avatar + Pause */}
@@ -476,6 +595,19 @@ export const GameArena: React.FC<GameArenaProps> = ({
                     : 'ENERGY'}
                 </span>
               </div>
+
+              {hud.staminaEnabled && (
+                <div className="w-36 sm:w-44 h-2 rounded-full bg-slate-950/85 border border-[#0b1633] overflow-hidden">
+                  <div
+                    className={`h-full transition-all duration-75 ${
+                      hud.p2Stamina < 20
+                        ? 'bg-amber-500'
+                        : 'bg-gradient-to-r from-emerald-400 to-lime-400'
+                    }`}
+                    style={{ width: `${Math.min(100, Math.round(hud.p2Stamina))}%` }}
+                  />
+                </div>
+              )}
             </div>
 
             <div className="relative w-14 h-14 sm:w-16 sm:h-16 rounded-2xl overflow-hidden border-[3px] border-rose-400 bg-slate-900 shadow-lg shrink-0">
